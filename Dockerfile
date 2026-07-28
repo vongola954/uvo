@@ -15,8 +15,8 @@ COPY internal/api/web/static ./internal/api/web/static
 RUN mkdir -p /data/media /data/logs \
     && chown -R uvo:uvo /app /data
 ENV WEB_HOST=0.0.0.0 \
-    WEB_PORT=80 \
-    PORT=80 \
+    WEB_PORT=8080 \
+    PORT=8080 \
     DB_DRIVER=postgres \
     MEDIA_ROOT=/data/media \
     WEB_PUBLIC_URL=https://uvo-baskakovanton.amvera.io \
@@ -26,5 +26,5 @@ ENV WEB_HOST=0.0.0.0 \
     VOICE_CLONE_PROVIDER=acedata \
     BOT_MODE=polling
 USER uvo
-EXPOSE 80
+EXPOSE 8080
 CMD ["./uvo"]
