@@ -45,7 +45,8 @@ func main() {
 	voiceRepo := repository.NewVoiceProfileRepository(gdb)
 
 	genSvc := services.NewGenerationService(ace, trackRepo, userRepo)
-	voiceSvc := services.NewVoiceCloneService(sf, el, voiceRepo, userRepo, gdb)
+	voiceSvc := services.NewVoiceCloneService(ace, sf, el, voiceRepo, userRepo, gdb, cfg.MediaRoot, cfg.WebPublicURL)
+	coverSvc := services.NewCoverService(ace, trackRepo, voiceSvc, cfg.MediaRoot, cfg.WebPublicURL)
 	socialSvc := services.NewSocialService(gdb)
 	playlistSvc := services.NewPlaylistService(gdb)
 	editSvc := services.NewEditService(ace, trackRepo, gdb, cfg.MediaRoot)
@@ -62,12 +63,16 @@ func main() {
 		}
 	}
 
+	if cfg.WebPublicURL == "" {
+		logrus.Warn("WEB_PUBLIC_URL пуст — клон голоса AceData и каверы из загрузки не сработают (нужен публичный HTTPS)")
+	}
+
 	maxBot := bot.New(maxC, genSvc, limiter, credits)
 	deps := &webapi.Deps{
 		Cfg: cfg, DB: gdb, Gen: genSvc, Credits: credits, Limiter: limiter, Jobs: jobs,
-		Tracks: trackRepo, Voice: voiceSvc, Social: socialSvc, Playlists: playlistSvc,
+		Tracks: trackRepo, Voice: voiceSvc, Cover: coverSvc, Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.4.0",
+		MaxOn: maxC.Enabled(), Version: "2.5.0",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -81,6 +86,6 @@ func main() {
 	r.Use(middleware.RecoveryJSON(), gin.Logger(), middleware.Metrics(), middleware.OptionalAuth(cfg.JWTSecret), middleware.CSRF())
 	webapi.Register(r, deps)
 
-	logrus.Infof("UVO 2.4 on %s:%d (db=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver)
+	logrus.Infof("UVO 2.5 on %s:%d (db=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

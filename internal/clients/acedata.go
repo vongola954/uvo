@@ -13,26 +13,30 @@ import (
 )
 
 type AceDataClient struct {
-	apiKey   string
-	baseURL  string
-	tasksURL string
-	async    bool
-	pollInt  int
-	maxWait  int
-	model    string
-	client   *http.Client
+	apiKey    string
+	baseURL   string
+	tasksURL  string
+	voicesURL string
+	uploadURL string
+	async     bool
+	pollInt   int
+	maxWait   int
+	model     string
+	client    *http.Client
 }
 
 func NewAceDataClient(cfg *config.Config) *AceDataClient {
 	return &AceDataClient{
-		apiKey:   cfg.SunoAPIKey,
-		baseURL:  cfg.AceDataSunoURL,
-		tasksURL: cfg.AceDataTasksURL,
-		async:    cfg.AceDataAsync,
-		pollInt:  cfg.AceDataPollInterval,
-		maxWait:  cfg.AceDataMaxWait,
-		model:    cfg.SunoModel,
-		client:   &http.Client{Timeout: 120 * time.Second},
+		apiKey:    cfg.SunoAPIKey,
+		baseURL:   cfg.AceDataSunoURL,
+		tasksURL:  cfg.AceDataTasksURL,
+		voicesURL: cfg.AceDataVoicesURL,
+		uploadURL: cfg.AceDataUploadURL,
+		async:     cfg.AceDataAsync,
+		pollInt:   cfg.AceDataPollInterval,
+		maxWait:   cfg.AceDataMaxWait,
+		model:     cfg.SunoModel,
+		client:    &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -44,6 +48,7 @@ type GenerateRequest struct {
 	Title        string `json:"title,omitempty"`
 	Instrumental bool   `json:"instrumental,omitempty"`
 	Model        string `json:"model,omitempty"`
+	PersonaID    string `json:"persona_id,omitempty"`
 }
 
 type GenerateResponse struct {
@@ -118,6 +123,9 @@ func (c *AceDataClient) generateAsync(req *GenerateRequest) (*GenerateResponse, 
 
 	if req.Instrumental {
 		payload["instrumental"] = true
+	}
+	if req.PersonaID != "" {
+		payload["persona_id"] = req.PersonaID
 	}
 
 	jsonData, err := json.Marshal(payload)

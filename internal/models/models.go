@@ -32,7 +32,8 @@ type VoiceProfile struct {
 	ID        uint      `gorm:"primaryKey"`
 	UserID    string    `gorm:"not null;index"`
 	Name      string    `gorm:"not null"`
-	VoiceID   string    `gorm:"not null"`
+	VoiceID   string    `gorm:"not null"` // AceData persona_id or EL/SF voice id
+	Provider  string    `gorm:"default:'acedata'"` // acedata | elevenlabs | siliconflow
 	Active    bool      `gorm:"default:true"`
 	CreatedAt time.Time
 }

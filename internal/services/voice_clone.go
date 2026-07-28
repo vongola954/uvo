@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,31 +16,42 @@ import (
 )
 
 type VoiceCloneService struct {
+	ace       *clients.AceDataClient
 	sfClient  *clients.SiliconFlowClient
 	elClient  *clients.ElevenLabsClient
 	voiceRepo *repository.VoiceProfileRepository
 	userRepo  *repository.UserRepository
 	db        *gorm.DB
+	mediaRoot string
+	publicURL string
 	limitDay  int
 }
 
 func NewVoiceCloneService(
+	ace *clients.AceDataClient,
 	sf *clients.SiliconFlowClient,
 	el *clients.ElevenLabsClient,
 	voiceRepo *repository.VoiceProfileRepository,
 	userRepo *repository.UserRepository,
 	db *gorm.DB,
+	mediaRoot, publicURL string,
 ) *VoiceCloneService {
 	lim, _ := strconv.Atoi(os.Getenv("VOICE_CLONE_LIMIT_DAY"))
 	if lim <= 0 {
 		lim = 3
 	}
+	if mediaRoot == "" {
+		mediaRoot = "./data/media"
+	}
 	return &VoiceCloneService{
+		ace:       ace,
 		sfClient:  sf,
 		elClient:  el,
 		voiceRepo: voiceRepo,
 		userRepo:  userRepo,
 		db:        db,
+		mediaRoot: mediaRoot,
+		publicURL: publicURL,
 		limitDay:  lim,
 	}
 }
@@ -47,7 +59,7 @@ func NewVoiceCloneService(
 func (s *VoiceCloneService) providerOrder() []string {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("VOICE_CLONE_PROVIDER")))
 	if raw == "" || raw == "auto" {
-		return []string{"elevenlabs", "siliconflow"}
+		return []string{"acedata", "elevenlabs", "siliconflow"}
 	}
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
@@ -59,8 +71,10 @@ func (s *VoiceCloneService) providerOrder() []string {
 			p = "elevenlabs"
 		case "sf":
 			p = "siliconflow"
+		case "suno", "ace":
+			p = "acedata"
 		}
-		if p != "elevenlabs" && p != "siliconflow" {
+		if p != "acedata" && p != "elevenlabs" && p != "siliconflow" {
 			continue
 		}
 		if seen[p] {
@@ -70,13 +84,27 @@ func (s *VoiceCloneService) providerOrder() []string {
 		out = append(out, p)
 	}
 	if len(out) == 0 {
-		return []string{"siliconflow", "elevenlabs"}
+		return []string{"acedata", "elevenlabs", "siliconflow"}
 	}
 	return out
 }
 
-func (s *VoiceCloneService) cloneWith(provider string, audioData []byte, name string) (string, error) {
+func (s *VoiceCloneService) cloneWith(provider string, audioData []byte, name string) (voiceID string, err error) {
 	switch provider {
+	case "acedata":
+		if s.ace == nil {
+			return "", fmt.Errorf("not configured")
+		}
+		ext := ".mp3"
+		filename, _, err := PublicUpload(s.mediaRoot, audioData, ext)
+		if err != nil {
+			return "", err
+		}
+		url, err := PublicURL(s.publicURL, filename)
+		if err != nil {
+			return "", err
+		}
+		return s.ace.CreatePersona(url, name, "UVO studio voice clone")
 	case "elevenlabs":
 		if s.elClient == nil || !s.elClient.Enabled() {
 			return "", fmt.Errorf("not configured")
@@ -96,7 +124,6 @@ func normalizeName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// findExisting — дедуп: тот же user + то же имя (без суффикса [provider])
 func (s *VoiceCloneService) findExisting(userID, name string) (*models.VoiceProfile, error) {
 	list, err := s.voiceRepo.GetByUserID(userID)
 	if err != nil {
@@ -105,7 +132,6 @@ func (s *VoiceCloneService) findExisting(userID, name string) (*models.VoiceProf
 	want := normalizeName(name)
 	for i := range list {
 		n := list[i].Name
-		// strip " [provider]" suffix
 		if idx := strings.LastIndex(n, " ["); idx > 0 {
 			n = n[:idx]
 		}
@@ -136,8 +162,6 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	if name == "" {
 		name = "voice"
 	}
-
-	// 1) Дедупликация — не тратим API
 	if existing, err := s.findExisting(userID, name); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -152,8 +176,6 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	if len(audioData) < 1000 {
 		return nil, fmt.Errorf("audio too short, need 10–30 seconds")
 	}
-
-	// 2) Квота
 	if err := s.checkQuota(userID); err != nil {
 		return nil, err
 	}
@@ -188,10 +210,11 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	s.recordClone(userID)
 
 	profile := &models.VoiceProfile{
-		UserID:  userID,
-		Name:    fmt.Sprintf("%s [%s]", name, used),
-		VoiceID: voiceID,
-		Active:  true,
+		UserID:   userID,
+		Name:     fmt.Sprintf("%s [%s]", name, used),
+		VoiceID:  voiceID,
+		Provider: used,
+		Active:   true,
 	}
 	if err := s.voiceRepo.Create(profile); err != nil {
 		return nil, err
@@ -208,12 +231,11 @@ func (s *VoiceCloneService) List(userID string) ([]models.VoiceProfile, error) {
 
 func (s *VoiceCloneService) TTS(voiceID, text string) ([]byte, error) {
 	if s.elClient == nil || !s.elClient.Enabled() {
-		return nil, fmt.Errorf("elevenlabs required for TTS")
+		return nil, fmt.Errorf("elevenlabs required for TTS (AceData persona is for music only)")
 	}
 	return s.elClient.TextToSpeech(voiceID, text, "eleven_multilingual_v2")
 }
 
-// OwnsVoice reports whether voiceID belongs to userID (active profile).
 func (s *VoiceCloneService) OwnsVoice(userID, voiceID string) bool {
 	if userID == "" || voiceID == "" {
 		return false
@@ -230,6 +252,26 @@ func (s *VoiceCloneService) OwnsVoice(userID, voiceID string) bool {
 	return false
 }
 
+// AcePersonaID returns persona_id if this voice is AceData-backed (for music generate/cover).
+func (s *VoiceCloneService) AcePersonaID(userID, voiceID string) string {
+	if !s.OwnsVoice(userID, voiceID) {
+		return ""
+	}
+	list, err := s.voiceRepo.GetByUserID(userID)
+	if err != nil {
+		return ""
+	}
+	for _, v := range list {
+		if v.VoiceID == voiceID {
+			if v.Provider == "acedata" {
+				return v.VoiceID
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
 func (s *VoiceCloneService) QuotaRemaining(userID string) int {
 	dayAgo := time.Now().Add(-24 * time.Hour)
 	var n int64
@@ -241,4 +283,17 @@ func (s *VoiceCloneService) QuotaRemaining(userID string) int {
 		return 0
 	}
 	return left
+}
+
+// MediaRoot for resolve uploads (tests).
+func (s *VoiceCloneService) MediaRoot() string {
+	return s.mediaRoot
+}
+
+func UploadExtFromName(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext == "" {
+		return ".mp3"
+	}
+	return ext
 }

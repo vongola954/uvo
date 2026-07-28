@@ -70,6 +70,15 @@ func (s *EditService) Edit(req *EditRequest) (*models.Track, error) {
 		Custom: lyrics != "", Prompt: prompt, Lyric: lyrics, Style: style,
 		Title: track.Title, Instrumental: req.Instrumental, Model: "chirp-v5-5",
 	}
+	// Only AceData persona_ids work for re-generation with same voice
+	if track.VoiceProfileID != "" {
+		var vp models.VoiceProfile
+		if s.db.Where("user_id = ? AND voice_id = ?", req.UserID, track.VoiceProfileID).First(&vp).Error == nil {
+			if vp.Provider == "acedata" {
+				aceReq.PersonaID = track.VoiceProfileID
+			}
+		}
+	}
 	resp, err := s.ace.Generate(aceReq)
 	if err != nil {
 		return nil, err

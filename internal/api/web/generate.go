@@ -36,6 +36,18 @@ func (d *Deps) Generate(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
+	personaID := ""
+	if req.VoiceID != "" {
+		if d.Voice == nil {
+			middleware.AbortJSON(c, 400, "validation_error", "voice service unavailable")
+			return
+		}
+		personaID = d.Voice.AcePersonaID(uid, req.VoiceID)
+		if personaID == "" {
+			middleware.AbortJSON(c, 400, "validation_error", "voice_id должен быть AceData-клоном (для Suno). Сначала клонируйте голос в студии.")
+			return
+		}
+	}
 
 	// Idempotency: same request_id returns existing job
 	if req.RequestID != "" && !req.Sync {
@@ -58,7 +70,8 @@ func (d *Deps) Generate(c *gin.Context) {
 
 	genReq := &services.GenerateRequest{
 		UserID: uid, Prompt: req.Prompt, Style: req.Style, Lyrics: req.Lyrics,
-		Duration: req.Duration, Instrumental: req.Instrumental, VoiceID: req.VoiceID, Title: req.Title,
+		Duration: req.Duration, Instrumental: req.Instrumental, VoiceID: req.VoiceID,
+		PersonaID: personaID, Title: req.Title,
 	}
 
 	if req.Sync {

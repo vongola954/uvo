@@ -194,11 +194,18 @@
         <div class="flex items-end justify-between mb-6">
           <div>
             <h2 class="text-xl font-bold">Студия</h2>
-            <p class="text-sm text-zinc-500 mt-1">AI-копилот · не автопилот</p>
+            <p class="text-sm text-zinc-500 mt-1">Генерация · голос · кавер</p>
           </div>
           <span id="credits-chip" class="text-xs text-zinc-500"></span>
         </div>
 
+        <div class="flex gap-2 mb-6 text-xs font-semibold uppercase tracking-wider">
+          <button type="button" data-tab="gen" class="studio-tab px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Генерация</button>
+          <button type="button" data-tab="voice" class="studio-tab px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Клон голоса</button>
+          <button type="button" data-tab="cover" class="studio-tab px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Кавер</button>
+        </div>
+
+        <div id="panel-gen">
         <form id="gen-form" class="space-y-4">
           <div>
             <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Промпт</label>
@@ -219,6 +226,10 @@
             </div>
           </div>
           <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
+            <select id="voice_id"><option value="">По умолчанию Suno</option></select>
+          </div>
+          <div>
             <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стихи</label>
             <textarea id="lyrics" rows="2" placeholder="Опционально"></textarea>
           </div>
@@ -230,6 +241,43 @@
             GENERATE
           </button>
         </form>
+        </div>
+
+        <div id="panel-voice" class="hidden space-y-4">
+          <p class="text-sm text-zinc-500">Загрузите 10–60 сек чистого голоса (mp3/wav). Клон идёт в AceData persona для Suno-каверов и генерации.</p>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Имя голоса</label>
+            <input id="voice-name" type="text" placeholder="Мой голос" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Аудио</label>
+            <input id="voice-file" type="file" accept="audio/*,.mp3,.wav" class="w-full text-sm text-zinc-400">
+          </div>
+          <p id="voice-quota" class="text-xs text-zinc-600"></p>
+          <button type="button" id="btn-clone" class="btn-primary w-full py-4 rounded-2xl font-bold">Клонировать</button>
+          <div id="voice-list" class="text-sm text-zinc-400 space-y-1"></div>
+        </div>
+
+        <div id="panel-cover" class="hidden space-y-4">
+          <p class="text-sm text-zinc-500">Загрузите любой трек → кавер своим клонированным голосом. Стоимость: 2 кредита. Нужен <code class="text-zinc-300">WEB_PUBLIC_URL</code> на сервере.</p>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Ваш голос</label>
+            <select id="cover-voice"><option value="">Сначала клонируйте голос</option></select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Трек (mp3)</label>
+            <input id="cover-file" type="file" accept="audio/*,.mp3,.wav" class="w-full text-sm text-zinc-400">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стиль / промпт (опц.)</label>
+            <input id="cover-style" type="text" placeholder="pop ballad, emotional" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Название (опц.)</label>
+            <input id="cover-title" type="text" placeholder="My Cover" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm">
+          </div>
+          <button type="button" id="btn-cover" class="btn-primary w-full py-4 rounded-2xl font-bold">Сделать кавер (−2)</button>
+        </div>
 
         <div id="status-wrap" class="mt-6 hidden">
           <div class="flex justify-between text-xs text-zinc-400 mb-2">
@@ -272,12 +320,17 @@
           <div class="glass bento p-5">
             <div class="text-2xl mb-3">🎤</div>
             <h3 class="font-semibold mb-1">Клон голоса</h3>
-            <p class="text-sm text-zinc-500">SiliconFlow / ElevenLabs, дедуп и квоты.</p>
+            <p class="text-sm text-zinc-500">AceData persona для Suno + каверов.</p>
           </div>
           <div class="glass bento p-5">
             <div class="text-2xl mb-3">✏️</div>
             <h3 class="font-semibold mb-1">Правки</h3>
-            <p class="text-sm text-zinc-500">Стиль, текст, ревизии трека.</p>
+            <p class="text-sm text-zinc-500">Стиль, текст, ревизии на странице треков.</p>
+          </div>
+          <div class="glass bento p-5">
+            <div class="text-2xl mb-3">🎛️</div>
+            <h3 class="font-semibold mb-1">Кавер</h3>
+            <p class="text-sm text-zinc-500">Загрузи любой трек — спой своим голосом.</p>
           </div>
           <div class="glass bento p-5">
             <div class="text-2xl mb-3">📂</div>
@@ -393,7 +446,145 @@
           };
         }
       } catch (_) {}
+      await loadVoices();
     })();
+
+    function fillVoiceSelects(voices) {
+      const genSel = document.getElementById('voice_id');
+      const coverSel = document.getElementById('cover-voice');
+      const list = document.getElementById('voice-list');
+      if (genSel) {
+        const keep = genSel.value;
+        genSel.textContent = '';
+        genSel.appendChild(UVO.el('option', { value: '', text: 'По умолчанию Suno' }));
+        (voices || []).forEach(v => {
+          const id = v.VoiceID || v.voice_id;
+          const name = v.Name || v.name || id;
+          const prov = v.Provider || v.provider || '';
+          if (prov && prov !== 'acedata') return;
+          genSel.appendChild(UVO.el('option', { value: id, text: name }));
+        });
+        if (keep) genSel.value = keep;
+      }
+      if (coverSel) {
+        coverSel.textContent = '';
+        const ace = (voices || []).filter(v => {
+          const p = v.Provider || v.provider || 'acedata';
+          return !p || p === 'acedata';
+        });
+        if (!ace.length) {
+          coverSel.appendChild(UVO.el('option', { value: '', text: 'Сначала клонируйте голос' }));
+        } else {
+          ace.forEach(v => {
+            const id = v.VoiceID || v.voice_id;
+            const name = v.Name || v.name || id;
+            coverSel.appendChild(UVO.el('option', { value: id, text: name }));
+          });
+        }
+      }
+      if (list) {
+        list.textContent = '';
+        if (!(voices || []).length) {
+          list.textContent = 'Пока нет клонов.';
+        } else {
+          voices.forEach(v => {
+            list.appendChild(UVO.el('div', {
+              text: (v.Name || v.name) + ' · ' + (v.Provider || v.provider || '?')
+            }));
+          });
+        }
+      }
+    }
+
+    async function loadVoices() {
+      try {
+        const r = await UVO.api('/api/voices');
+        const d = await r.json();
+        if (!r.ok) return;
+        fillVoiceSelects(d.voices || []);
+        const q = document.getElementById('voice-quota');
+        if (q && d.clone_quota_left != null) q.textContent = 'Квота клонов сегодня: ' + d.clone_quota_left;
+      } catch (_) {}
+    }
+
+    document.querySelectorAll('.studio-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        document.querySelectorAll('.studio-tab').forEach(b => {
+          b.className = 'studio-tab px-3 py-2 rounded-xl border border-white/10 text-zinc-400';
+        });
+        btn.className = 'studio-tab px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400';
+        document.getElementById('panel-gen').classList.toggle('hidden', tab !== 'gen');
+        document.getElementById('panel-voice').classList.toggle('hidden', tab !== 'voice');
+        document.getElementById('panel-cover').classList.toggle('hidden', tab !== 'cover');
+      });
+    });
+
+    document.getElementById('btn-clone')?.addEventListener('click', async () => {
+      const file = document.getElementById('voice-file').files[0];
+      if (!file) { alert('Выберите аудиофайл'); return; }
+      const btn = document.getElementById('btn-clone');
+      btn.disabled = true;
+      btn.textContent = 'Клонирование...';
+      try {
+        await UVO.ensureDevToken();
+        const fd = new FormData();
+        fd.append('audio', file);
+        fd.append('name', document.getElementById('voice-name').value || 'voice');
+        const res = await UVO.api('/api/voice/clone', { method: 'POST', body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+        alert('Голос готов: ' + ((d.voice && (d.voice.Name || d.voice.name)) || 'ok'));
+        await loadVoices();
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Клонировать';
+      }
+    });
+
+    document.getElementById('btn-cover')?.addEventListener('click', async () => {
+      const file = document.getElementById('cover-file').files[0];
+      const voiceID = document.getElementById('cover-voice').value;
+      if (!file) { alert('Выберите трек'); return; }
+      if (!voiceID) { alert('Сначала клонируйте голос (вкладка «Клон голоса»)'); return; }
+      const wrap = document.getElementById('status-wrap');
+      const result = document.getElementById('result');
+      const btn = document.getElementById('btn-cover');
+      wrap.classList.remove('hidden');
+      result.classList.add('hidden');
+      btn.disabled = true;
+      const stopProgress = animateProgress();
+      document.getElementById('status-text').textContent = 'Кавер: upload → Suno...';
+      try {
+        await UVO.ensureDevToken();
+        const fd = new FormData();
+        fd.append('audio', file);
+        fd.append('voice_id', voiceID);
+        const style = document.getElementById('cover-style').value;
+        const title = document.getElementById('cover-title').value;
+        if (style) fd.append('style', style);
+        if (title) fd.append('title', title);
+        const res = await UVO.api('/api/cover', { method: 'POST', body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+        stopProgress();
+        document.getElementById('player').src = d.play_url;
+        const t = d.track || {};
+        document.getElementById('track-title').textContent = (t.Title || t.title || 'Cover') + ' · ' + (t.Duration || t.duration || '?') + 's';
+        document.getElementById('dl-link').href = d.play_url;
+        result.classList.remove('hidden');
+        const el = document.getElementById('credits-chip');
+        if (el && d.balance != null) el.textContent = 'кредиты: ' + d.balance;
+      } catch (e) {
+        stopProgress();
+        document.getElementById('status-text').textContent = 'Ошибка: ' + e.message;
+        document.getElementById('progress').style.width = '0%';
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     function setStep(n) {
       for (let i = 1; i <= 4; i++) {
@@ -444,7 +635,8 @@
         style: document.getElementById('style').value,
         lyrics: document.getElementById('lyrics').value,
         duration: parseInt(document.getElementById('duration').value) || 180,
-        instrumental: document.getElementById('instrumental').checked
+        instrumental: document.getElementById('instrumental').checked,
+        voice_id: document.getElementById('voice_id').value || undefined
       };
 
       try {

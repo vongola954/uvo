@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -27,6 +28,7 @@ type Deps struct {
 	Jobs      *services.JobStore
 	Tracks    *repository.TrackRepository
 	Voice     *services.VoiceCloneService
+	Cover     *services.CoverService
 	Social    *services.SocialService
 	Playlists *services.PlaylistService
 	Edit      *services.EditService
@@ -41,7 +43,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.4.0"
+		d.Version = "2.5.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -50,6 +52,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.GET("/feed.html", func(c *gin.Context) { c.File("./internal/api/web/static/feed.html") })
 	r.GET("/playlists.html", func(c *gin.Context) { c.File("./internal/api/web/static/playlists.html") })
 	r.GET("/metrics", middleware.MetricsHandler)
+	r.GET("/uploads/:name", d.serveUpload)
 
 	r.GET("/health", func(c *gin.Context) {
 		aceSt := d.Ace.Status()
@@ -102,6 +105,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.DELETE("/tracks/:id", d.deleteTrack)
 		api.POST("/voice/clone", d.voiceClone)
 		api.POST("/tts", d.tts)
+		api.POST("/cover", d.coverUpload)
 		api.GET("/elevenlabs/voices", d.elevenVoices)
 	}
 }
@@ -494,13 +498,22 @@ func (d *Deps) voiceClone(c *gin.Context) {
 		return
 	}
 	defer f.Close()
-	data := make([]byte, file.Size)
-	_, _ = f.Read(data)
+	const maxVoice = 15 << 20
+	limited := io.LimitReader(f, maxVoice+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", "read audio failed")
+		return
+	}
+	if int64(len(data)) > maxVoice {
+		middleware.AbortJSON(c, 400, "validation_error", "файл больше 15 MB")
+		return
+	}
 	name := c.PostForm("name")
 	if name == "" {
 		name = "voice"
 	}
-	if err := services.ValidateVoiceUpload(name, file.Size, file.Header.Get("Content-Type")); err != nil {
+	if err := services.ValidateVoiceUpload(name, int64(len(data)), file.Header.Get("Content-Type")); err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
@@ -510,6 +523,88 @@ func (d *Deps) voiceClone(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"voice": profile})
+}
+
+func (d *Deps) coverUpload(c *gin.Context) {
+	uid := middleware.UserID(c)
+	if d.Cover == nil {
+		middleware.AbortJSON(c, 501, "not_configured", "cover service unavailable")
+		return
+	}
+	file, err := c.FormFile("audio")
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", "audio file required (multipart field: audio) — любой трек для кавера")
+		return
+	}
+	f, err := file.Open()
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	defer f.Close()
+	const maxTrack = 30 << 20
+	data, err := io.ReadAll(io.LimitReader(f, maxTrack+1))
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", "read audio failed")
+		return
+	}
+	if int64(len(data)) > maxTrack {
+		middleware.AbortJSON(c, 400, "validation_error", "файл больше 30 MB")
+		return
+	}
+	voiceID := c.PostForm("voice_id")
+	if voiceID == "" {
+		middleware.AbortJSON(c, 400, "validation_error", "voice_id обязателен — сначала клонируйте голос")
+		return
+	}
+	if err := d.Credits.Spend(uid, 2); err != nil {
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, 2)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
+	track, err := d.Cover.CoverFromUpload(&services.CoverFromUploadRequest{
+		UserID:    uid,
+		AudioData: data,
+		Filename:  file.Filename,
+		VoiceID:   voiceID,
+		Prompt:    c.PostForm("prompt"),
+		Style:     c.PostForm("style"),
+		Lyrics:    c.PostForm("lyrics"),
+		Title:     c.PostForm("title"),
+	})
+	if err != nil {
+		d.Credits.Refund(uid, 2)
+		if pe := clients.AsProviderError(err); pe != nil {
+			c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
+			return
+		}
+		middleware.AbortJSON(c, 500, "cover_failed", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{
+		"success":  true,
+		"track":    track,
+		"play_url": fmt.Sprintf("/tracks/%d/play", track.ID),
+		"balance":  d.Credits.Balance(uid),
+		"cost":     2,
+	})
+}
+
+func (d *Deps) serveUpload(c *gin.Context) {
+	if d.Cfg == nil {
+		c.Status(404)
+		return
+	}
+	path, err := services.ResolveUploadPath(d.Cfg.MediaRoot, c.Param("name"))
+	if err != nil {
+		c.Status(404)
+		return
+	}
+	c.File(path)
 }
 
 func (d *Deps) tts(c *gin.Context) {

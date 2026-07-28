@@ -29,11 +29,14 @@ type Config struct {
 	BotMode             string
 	AceDataSunoURL      string
 	AceDataTasksURL     string
+	AceDataVoicesURL    string
+	AceDataUploadURL    string
 	AceDataAsync        bool
 	AceDataPollInterval int
 	AceDataMaxWait      int
 	SunoModel           string
 	LogPath             string // empty = stdout only (Amvera)
+	WebPublicURL        string // public base URL for AceData to fetch uploads
 }
 
 func Load() (*Config, error) {
@@ -57,11 +60,14 @@ func Load() (*Config, error) {
 		BotMode:             getEnv("BOT_MODE", "polling"),
 		AceDataSunoURL:      getEnv("ACEDATA_SUNO_URL", "https://api.acedata.cloud/suno/audios"),
 		AceDataTasksURL:     getEnv("ACEDATA_SUNO_TASKS_URL", "https://api.acedata.cloud/suno/tasks"),
+		AceDataVoicesURL:    getEnv("ACEDATA_SUNO_VOICES_URL", "https://api.acedata.cloud/suno/voices"),
+		AceDataUploadURL:    getEnv("ACEDATA_SUNO_UPLOAD_URL", "https://api.acedata.cloud/suno/upload"),
 		SunoModel:           getEnv("SUNO_MODEL", "chirp-v5-5"),
 		AceDataAsync:        getEnvBool("ACEDATA_ASYNC", true),
 		AceDataPollInterval: getEnvInt("ACEDATA_POLL_INTERVAL", 3),
 		AceDataMaxWait:      getEnvInt("ACEDATA_MAX_WAIT", 300),
 		LogPath:             os.Getenv("LOG_PATH"),
+		WebPublicURL:        strings.TrimRight(os.Getenv("WEB_PUBLIC_URL"), "/"),
 	}
 
 	// PORT (PaaS) overrides WEB_PORT

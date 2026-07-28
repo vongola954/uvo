@@ -34,7 +34,8 @@ type GenerateRequest struct {
 	Key          string
 	BPM          int
 	Duration     int
-	VoiceID      string
+	VoiceID      string // stored on Track
+	PersonaID    string // AceData persona for generation
 	Instrumental bool
 	Title        string
 }
@@ -62,6 +63,7 @@ func (s *GenerationService) Generate(req *GenerateRequest) (*models.Track, error
 		Title:        reqTitle,
 		Instrumental: req.Instrumental,
 		Model:        "chirp-v5-5",
+		PersonaID:    req.PersonaID,
 	}
 
 	resp, err := s.aceClient.Generate(aceReq)

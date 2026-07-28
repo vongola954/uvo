@@ -34,6 +34,7 @@ func needsCSRF(method, path string) bool {
 		"/api/generate",
 		"/api/voice",
 		"/api/tts",
+		"/api/cover",
 		"/api/credits/topup",
 		"/api/bot/simulate",
 	}

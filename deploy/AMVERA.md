@@ -52,7 +52,8 @@ amvera-<login>-cnpg-<project>-rw
 | `DEV_AUTH` | `false` | нет |
 | `DEMO_TOPUP` | `false` | нет |
 | `BOT_MODE` | `polling` или `webhook` | нет |
-| `WEB_PUBLIC_URL` | `https://<ваш-домен-amvera>` | нет |
+| `WEB_PUBLIC_URL` | `https://uvo-baskakovanton.amvera.io` | **да** для clone/cover |
+| `VOICE_CLONE_PROVIDER` | `acedata` | нет |
 | `MEDIA_ROOT` | `/data/media` (уже в Dockerfile) | нет |
 | `WEB_HOST` | `0.0.0.0` | нет |
 

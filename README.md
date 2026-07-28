@@ -52,9 +52,16 @@ BOT_MODE=polling   # or webhook + POST /api/max/webhook
 - [FIXPLAN.md](FIXPLAN.md) — приоритеты P0→P2
 - [ROADMAP.md](ROADMAP.md) — эпохи 1–11
 
-Текущая версия: **2.4.0** (эпохи 7–11).
+Текущая версия: **2.5.0** (голос AceData + кавер + правки UI).
+
+## Studio
+- **Генерация** — промпт / стиль / голос (AceData persona)
+- **Клон голоса** — `POST /api/voice/clone` → AceData `/suno/voices` (нужен `WEB_PUBLIC_URL`)
+- **Кавер** — `POST /api/cover` (загрузка любого трека + свой голос, −2 кредита)
+- **Правки** — на `/tracks.html` → «Правка (−1)»
+
+Для clone/cover AceData скачивает файлы с вашего домена: `GET /uploads/:name`. На Amvera задайте `WEB_PUBLIC_URL=https://uvo-….amvera.io`.
 
 ## Epochs
 1 AceData · 2 Reliability · 3 Security · 4 MAX · 5 Product UX · 6 Polish  
-**Done:** 7 Lockdown · 8 Auth UX · 9 Prod foundation · 10 Product & pay · 11 Quality & CI  
-Дальше: по запросу (ЮKassa / эпоха 12+). См. [ROADMAP.md](ROADMAP.md).
+**Done:** 7–11 · **2.5:** voice/cover studio

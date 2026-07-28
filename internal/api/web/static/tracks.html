@@ -37,6 +37,30 @@ async function shareFeed(id) {
   alert('В ленте (трек стал публичным)');
   load();
 }
+async function editTrack(id, title) {
+  const promptVal = prompt('Новый промпт (пусто = без смены)', '') || '';
+  const style = prompt('Новый стиль (пусто = без смены)', '') || '';
+  const lyrics = prompt('Новые стихи (пусто = без смены)', '') || '';
+  const body = {};
+  if (promptVal) body.prompt = promptVal;
+  if (style) body.style = style;
+  if (lyrics) body.lyrics = lyrics;
+  if (!Object.keys(body).length) {
+    alert('Нечего менять');
+    return;
+  }
+  const res = await UVO.api('/api/tracks/' + id + '/edit', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    alert((d.error && d.error.message) || 'Ошибка правки (−1 кредит)');
+    return;
+  }
+  alert('Трек обновлён (−1 кредит): ' + (title || id));
+  load();
+}
 async function load() {
   const el = document.getElementById('list');
   try {
@@ -68,8 +92,14 @@ async function load() {
         text: 'В ленту',
       });
       btnShare.onclick = () => shareFeed(id);
+      const btnEdit = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
+        text: 'Правка (−1)',
+      });
+      btnEdit.onclick = () => editTrack(id, title);
       actions.appendChild(btnVis);
       actions.appendChild(btnShare);
+      actions.appendChild(btnEdit);
       card.appendChild(actions);
       el.appendChild(card);
     });
