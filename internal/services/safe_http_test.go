@@ -1,6 +1,10 @@
 package services
 
-import "testing"
+import (
+	"net/http"
+	"net/url"
+	"testing"
+)
 
 func TestSafeDownloadRejectsHTTP(t *testing.T) {
 	err := SafeDownload("http://cdn1.suno.ai/x.mp3", "out.mp3", 1024)
@@ -31,4 +35,62 @@ func TestSafeDownloadRejectsPrivateIP(t *testing.T) {
 	if err == nil || err.Error() != "private IP blocked" {
 		t.Fatalf("want private IP blocked, got %v", err)
 	}
+}
+
+func TestCheckDownloadRedirectBlocksPrivateHop(t *testing.T) {
+	via := []*http.Request{mustHTTPSReq(t, "https://cdn1.suno.ai/track.mp3")}
+	req := mustHTTPSReq(t, "https://169.254.169.254/latest/meta-data/")
+	if err := checkDownloadRedirect(req, via); err == nil {
+		t.Fatal("expected private IP blocked on redirect hop")
+	}
+}
+
+func TestCheckDownloadRedirectBlocksHTTPHop(t *testing.T) {
+	via := []*http.Request{mustHTTPSReq(t, "https://cdn1.suno.ai/track.mp3")}
+	req, err := http.NewRequest(http.MethodGet, "http://cdn1.suno.ai/x.mp3", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkDownloadRedirect(req, via); err == nil {
+		t.Fatal("expected only https on redirect")
+	}
+}
+
+func TestCheckDownloadRedirectBlocksUnknownHost(t *testing.T) {
+	via := []*http.Request{mustHTTPSReq(t, "https://cdn1.suno.ai/track.mp3")}
+	req := mustHTTPSReq(t, "https://evil.example/steal")
+	if err := checkDownloadRedirect(req, via); err == nil {
+		t.Fatal("expected host not allowlisted on redirect")
+	}
+}
+
+func TestCheckDownloadRedirectTooMany(t *testing.T) {
+	via := make([]*http.Request, 5)
+	for i := range via {
+		via[i] = mustHTTPSReq(t, "https://cdn1.suno.ai/a")
+	}
+	req := mustHTTPSReq(t, "https://cdn2.suno.ai/b")
+	if err := checkDownloadRedirect(req, via); err == nil {
+		t.Fatal("expected too many redirects")
+	}
+}
+
+func TestAssertSafeURLLinkLocalLiteral(t *testing.T) {
+	u, err := url.Parse("https://169.254.169.254/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DOWNLOAD_ALLOW_HOSTS", "169.254.169.254")
+	if err := assertSafeURL(u); err == nil {
+		t.Fatal("link-local must be blocked even if allowlisted")
+	}
+}
+
+func mustHTTPSReq(t *testing.T, raw string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
 }

@@ -30,11 +30,14 @@ func idemKey(userID, requestID, jobID string) string {
 	return jobID
 }
 
-func (s *JobStore) Create(userID, requestID string) *models.JobRecord {
+// CreateOrClaim inserts a pending job. created=true only for the winning insert —
+// callers must Spend/start worker only when created. Concurrent same request_id
+// returns the existing row with created=false (no double spend).
+func (s *JobStore) CreateOrClaim(userID, requestID string) (job *models.JobRecord, created bool) {
 	if requestID != "" {
 		var existing models.JobRecord
 		if err := s.db.Where("idem_key = ?", idemKey(userID, requestID, "")).First(&existing).Error; err == nil {
-			return &existing
+			return &existing, false
 		}
 	}
 	id := uuid.New().String()
@@ -47,13 +50,39 @@ func (s *JobStore) Create(userID, requestID string) *models.JobRecord {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if err := s.db.Create(j).Error; err != nil && requestID != "" {
-		var existing models.JobRecord
-		if s.db.Where("idem_key = ?", j.IdemKey).First(&existing).Error == nil {
-			return &existing
+	if err := s.db.Create(j).Error; err != nil {
+		if requestID != "" {
+			var existing models.JobRecord
+			if s.db.Where("idem_key = ?", j.IdemKey).First(&existing).Error == nil {
+				return &existing, false
+			}
 		}
+		// Create failed without recoverable idem row — do not treat as owned.
+		return j, false
 	}
+	return j, true
+}
+
+// Create is CreateOrClaim discarding the created flag (legacy).
+func (s *JobStore) Create(userID, requestID string) *models.JobRecord {
+	j, _ := s.CreateOrClaim(userID, requestID)
 	return j
+}
+
+// ClaimProcessing CAS pending → processing. Only one worker wins.
+func (s *JobStore) ClaimProcessing(id string) bool {
+	res := s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND status = ?", id, JobPending).
+		Updates(map[string]interface{}{
+			"status":     JobProcessing,
+			"updated_at": time.Now(),
+		})
+	return res.Error == nil && res.RowsAffected == 1
+}
+
+// Delete removes a job (e.g. pending row after Spend failed).
+func (s *JobStore) Delete(id string) {
+	_ = s.db.Delete(&models.JobRecord{}, "id = ?", id).Error
 }
 
 func (s *JobStore) Get(id string) (*models.JobRecord, bool) {

@@ -1,66 +1,73 @@
-# Аудит UVO 2.4.0 — 2026-07-28 (повторный)
+# Аудит UVO 2.6.2 — 2026-07-29
 
-Жёсткий аудит после эпох 7–11. Предыдущий (1.9 → 4.5/10): см. историю в git / раздел «Закрыто в эпохах».
+Жёсткий аудит после prod-hardening (2.6.1) + эпоха 12 (SSRF + idem). Предыдущий (2.4.0 ≈ 5.5/10): см. ниже «Закрыто».
 
-**Метод:** полный обзор кода + целевые проверки auth/CSRF/ownership/SSRF/credits/webhook/upload/Docker/фронт.  
-**Версия в коде:** 2.4.0 · live Amvera на момент аудита: `/health` 2.4.0.
+**Метод:** обзор auth/CSRF/ownership/SSRF/credits/webhook/upload/Docker/karaoke/portrait + live `/health`.  
+**Код:** `2.6.2` (эпоха 12: CheckRedirect + claim→spend).
 
 ---
 
 ## Вердикт
 
-| Критерий | Было (1.9) | Сейчас (2.4) | Комментарий |
-|----------|------------|--------------|-------------|
-| Архитектура | 6/10 | **7/10** | Роуты вынесены; слои ок; jobs/idempotency сырые |
-| Безопасность | 3/10 | **5.5/10** | Auth/CSRF/ownership есть; fail-open конфиг; SSRF redirects |
-| Надёжность | 5/10 | **6.5/10** | Postgres + atomic spend; race idem↔credits; TTS без лимитов |
-| Тесты | 2/10 | **6/10** | CI + auth/credits/safe_*/topup; нет SSRF-redirect / race tests |
-| Prod-ready | 4/10 | **5/10** | Код лучше; без boot-guard и с demo-флагами — нет |
-| UX/фронт | 7/10 | **7.5/10** | XSS закрыт; JWT в localStorage; private play + Bearer слабо |
+| Критерий | 2.4 | **2.6.1** | Комментарий |
+|----------|-----|-----------|-------------|
+| Архитектура | 7 | **7.5** | Слои ок; jobs без exclusive claim |
+| Безопасность | 5.5 | **7.0** | Fail-closed; SSRF redirect остаётся |
+| Надёжность | 6.5 | **6.5** | Atomic spend; idem↔credits race |
+| Тесты | 6 | **6.5** | CI; нет redirect / race / media authz |
+| Prod-ready | 5 | **7.0** | Guards + JWT + `/login`; root Docker |
+| Cost control | 5 | **5.5** | Gen/cover/karaoke берут кредиты; TTS/clone — нет |
 
-**Итог: 5.5/10** — сильный lockdown MVP. **В интернет с текущим локальным `.env` (все danger-флаги ON) выставлять нельзя.**  
-При корректных prod-флагах + ротации ключей ≈ **6.5–7**. До **10/10** — fail-closed, SSRF harden, cost controls, non-root, payments, session model.
+**Итог: 6.8/10** — shipable MVP на Amvera при включённых guards.  
+До ~8.5: SSRF harden, claim→spend, cost controls, non-root, session cookie.  
+До ~10: payments, CSP, signed media, dual JWT rotation.
 
 ```
-Код после 7–11 ──────────► ~7   (если флаги выключены)
-Мисконфиг / .env demo ───► ~3–4 (открытый demo)
-Реальный риск сейчас ────► 5.5  (смесь хорошего кода и footgun'ов)
+Код + prod_guards ON ───► ~6.8–7
+UVO_ALLOW_INSECURE=true ► ~3–4 (открытый demo снова)
 ```
 
 ---
 
-## Критично (P0)
+## Закрыто в 2.6.1
 
-### C1. Danger-флаги + живые ключи в workspace `.env`
-Локальный `.env`: `ALLOW_ANON=true`, `DEV_AUTH=true`, `DEMO_TOPUP=true`, реальные provider keys, предсказуемый `JWT_SECRET`.  
-**Не коммитится** (gitignore / dockerignore) — но любой запуск с этим env = shared demo + mint JWT + free topup + сжигание AceData.
+| Было | Сейчас |
+|------|--------|
+| Нет fail-closed | `ApplyProductionGuards` — force `ALLOW_ANON`/`DEV_AUTH`/`DEMO_TOPUP=false` |
+| Слабый JWT default | Durable `/data/jwt_secret`, reject weak |
+| Нет публичного URL | `WEB_PUBLIC_URL` в Docker + fallback |
+| Нет студийного входа без demo | MAX `/login` → JWT deep link 7d |
 
-**Действие:** ротация всех ключей (AceData, MAX, SiliconFlow, JWT, webhook, DB). Prod: все три флага `false`, длинный случайный `JWT_SECRET`.
-
-### C2. `DEV_AUTH` выдаёт JWT на любой `user_id`
-`POST /api/auth/token` (`routes.go`) при `DEV_AUTH=true` — захват любого user id (в т.ч. MAX).
-
-**Фикс:** не стартовать в release/https при `DEV_AUTH=true`; либо только loopback; в prod-сборке вырезать эндпоинт.
-
-### C3. Нет fail-closed bootstrap
-`config.go`: default `JWT_SECRET=dev-secret-change-me`; нет отказа при danger-флагах. Забыли env → forgeable JWT / открытый demo.
-
-**Фикс:** `config.Load()` падает, если secret короткий/default; danger-флаги только при `UVO_ALLOW_INSECURE=true`.
+Live подтверждено: `prod_guards:true`, флаги off, `web_public_url` set.
 
 ---
 
-## Высокий (P1)
+## Критично (остаток)
 
-| ID | Находка | Где | Риск | Фикс |
-|----|---------|-----|------|------|
-| H1 | **SSRF через redirects** | `safe_http.go` — `http.Client` без `CheckRedirect`; private IP только на initial host | Allowlisted CDN → 302 на metadata/RFC1918 | CheckRedirect + re-validate; dial IP pin |
-| H2 | **TTS без кредитов и rate limit** | `routes.go` `tts` — только OwnsVoice | Auth user жжёт ElevenLabs | Credits + limiter + daily cap |
-| H3 | **Voice clone — мягкая quota** | check-then-record TOCTOU; MIME no-op | Параллельный clone / junk upload | Atomic quota; magic bytes; credits |
-| H4 | **Idempotent generate ↔ double spend** | `generate.go`: Spend → Create; при race второй hit Processing/Done без Refund; оба Pending → два worker на один job | Потеря кредитов / двойная генерация | Spend после exclusive create; unique worker; refund на idempotent hit после spend |
-| H5 | **`bot/simulate` принимает чужой `user_id`** | при `DEV_AUTH` | Трата чужих кредитов | Игнорировать body user_id = только `UserID(c)` |
-| H6 | **Webhook `?secret=`** | `webhook.go` | Секрет в access/Referer/CDN логах | Только header; nginx inject |
-| H7 | **Утечка provider body в клиент** | `err.Error()` в generate/voice/tts/eleven | Внутренности AceData | Только `ProviderError` коды |
-| H8 | **Docker root** | `Dockerfile` — нет `USER` (ACCEPTANCE врёт про non-root) | RCE = root в контейнере | `USER` non-root + `/data` perms |
+### C1. Локальный `.env` toxic
+`ALLOW_ANON`/`DEV_AUTH`/`DEMO_TOPUP=true` + живые ключи. Gitignored, но копипаст в Amvera или `UVO_ALLOW_INSECURE=true` снимает guards.
+
+**Действие:** не копировать demo-флаги в prod; пароль DB уже сменён — ок; при сомнении ротировать AceData/MAX/JWT/webhook.
+
+### C2. Escape hatch `UVO_ALLOW_INSECURE`
+Полностью отключает fail-closed (`prod.go`).
+
+**Фикс:** разрешать только non-HTTPS + loopback; иначе FATAL.
+
+---
+
+## Высокий (P1) — рекомендации по реализации
+
+| ID | Находка | Где | Реализация |
+|----|---------|-----|------------|
+| ~~H1~~ | ~~SSRF через redirects~~ | **CLOSED 2.6.2** | `CheckRedirect` + dial reject private; тесты 302→link-local |
+| ~~H2~~ | ~~Spend до exclusive job claim~~ | **CLOSED 2.6.2** | `CreateOrClaim` → Spend; `ClaimProcessing` CAS; Refund на lost claim |
+| **H3** | TTS без кредитов / RL | `routes.go` `tts` | `Spend(1)` + `Limiter.Allow` (или daily cap) |
+| **H4** | Voice clone soft quota TOCTOU | `voice_clone.go` | Atomic quota row; credits; magic-byte sniff (MIME no-op сейчас) |
+| **H5** | Karaoke/portrait без gen RL | `routes.go` | `Limiter.Allow` на Hedra/Kling-пути |
+| **H6** | Provider body клиенту | `err.Error()`, Hedra | Только `ProviderError` + `redactBody` |
+| **H7** | Docker root | `Dockerfile` | `USER` non-root + `chown /data` |
+| **H8** | Webhook `?secret=` | `webhook.go` | Только header; убрать query |
 
 ---
 
@@ -68,44 +75,42 @@
 
 | ID | Находка | Фикс |
 |----|---------|------|
-| M1 | `deleteTrack` — `os.Remove` без `SafeMediaPath` | Проверка пути |
-| M2 | Upload `make([]byte, file.Size)` | `LimitReader` + MaxMultipartMemory |
-| M3 | `ValidateVoiceUpload` MIME — пустой if | Magic-byte sniff |
-| M4 | Rate limit count-then-insert | Atomic upsert |
-| M5 | JWT в `localStorage` | HttpOnly cookie session |
-| M6–M7 | CSRF без SameSite; `!=` compare | SameSite=Strict; constant-time |
-| M8 | Webhook compare при разной длине | SHA-256 обоих, потом compare |
-| M9 | Открытые `/health` + `/metrics` | Auth / network restrict |
-| M10 | `PGSSLMODE` default `disable` | Default `require` |
-| M11 | Caption без лимита длины | Cap ~500 |
-| M12 | Private play + Bearer из localStorage не уходит в `<audio>` | Signed play URL / cookie |
-| M13 | Нет CSP / security headers; Tailwind CDN | Headers + self-host |
-| M14 | DNS rebinding на download | DialContext pin IP |
+| M1 | `/media/assets/:name` без auth | Signed TTL или RequireAuth |
+| M2 | `/uploads` без TTL cleanup | Cron delete 24–48h |
+| M3 | JWT в `?token=` 7d | One-time code → HttpOnly cookie; link TTL ≤1h |
+| M4 | `PGSSLMODE` default `disable` | `require` для postgres |
+| M5 | CSRF `!=`, нет SameSite | Strict + constant-time |
+| M6 | `deleteTrack` без `SafeMediaPath` | Resolve path перед `Remove` |
+| M7 | Открытые `/health` details + `/metrics` | Урезать публичный health; auth metrics |
+| M8 | Private play + Bearer из localStorage | Cookie / signed play URL |
+| M9 | Rate limit count-then-insert | Atomic upsert |
+| M10 | Нет CSP / security headers | Headers + self-host Tailwind |
+| M11 | Caption без лимита | Cap ~500 |
+| M12 | Hardcoded Amvera URL fallback | Fail если `WEB_PUBLIC_URL` пуст в prod |
 
 ---
 
 ## Низкий (P3)
 
-- Публичные sequential track IDs (ожидаемо для discover)
-- Gin logger может засветить `?secret=` если query используется
-- `Add` кредитов игнорирует ошибки; `SpendTx` не используется
-- ACCEPTANCE prod-флаги всё ещё unchecked как release gate
+- Sequential public track IDs (ожидаемо)
+- Access log может держать `?token=` / `?secret=`
+- JWT без `iss`/`aud` / dual-secret rotation
+- README version drift
+- `SpendTx` не используется; `Add` глотает ошибки
+- Payments: `coming_soon` (ожидаемо)
 
 ---
 
-## Что уже хорошо (эпохи 7–11)
+## Что уже хорошо
 
-1. `RequireAuth` на `/api/*` + `OptionalAuth`  
-2. Guards: `DEV_AUTH` / `DEMO_TOPUP` / empty webhook secret → 403  
-3. Job / playlist / TTS voice ownership; discover только public  
-4. CSRF на mutate studio API  
-5. XSS: `textContent` / `UVO.el` (не user `innerHTML`)  
-6. `SafeDownload` baseline (HTTPS, allowlist, private IP, size) + `SafeMediaPath` на play  
-7. Atomic `Spend` + Postgres quotas  
-8. AceData log `redactBody`  
-9. `.env` не в git / dockerignore  
-10. CI: vet / test / build  
-11. GORM parameterized; нет `exec.Command` / raw SQL concat  
+1. `RequireAuth` + ownership на jobs/playlists/TTS voice  
+2. Prod guards + durable JWT + `/login`  
+3. CSRF на mutate studio API; XSS через `textContent`  
+4. `SafeDownload` baseline (HTTPS, allowlist, private IP, size) + `SafeMediaPath` play  
+5. Atomic `Spend` + Postgres; unique `IdemKey`  
+6. AceData `redactBody` в логах  
+7. Cover/karaoke/portrait списывают кредиты + ownership  
+8. CI: vet / test / build  
 
 ---
 
@@ -113,38 +118,44 @@
 
 | Пункт | Статус |
 |-------|--------|
-| `go build` / `go test` / `go vet` | OK (локально) |
-| CI workflow | Есть (GitHub; Amvera remote ≠ GH) |
-| RequireAuth + ownership | OK в коде |
-| ALLOW_ANON / DEV_AUTH / DEMO_TOPUP в workspace `.env` | **FAIL** (все true) |
-| Fail-closed boot | **FAIL** |
+| `go build` / `test` / `vet` | OK |
+| CI workflow | Есть |
+| RequireAuth + ownership | OK |
+| Prod danger-флаги (live) | **OK** (forced off) |
+| Fail-closed boot | **OK** (2.6.1) |
+| WEB_PUBLIC_URL | **OK** |
+| MAX studio login | **OK** (`/login`) |
 | Docker non-root | **FAIL** |
-| SSRF redirects | **FAIL** |
-| TTS cost control | **FAIL** |
-| ЮKassa | нет (coming_soon) |
-| Ротация ключей после чата | на владельце |
+| SSRF redirects | **OK** (2.6.2) |
+| TTS / clone cost | **FAIL** |
+| Idem claim→spend | **OK** (2.6.2) |
+| ЮKassa | нет |
+| DB password rotated | владелец подтвердил |
 
 ---
 
-## Приоритеты следующих эпох
+## План реализации (эпохи)
 
-| | Эпоха | Работа |
-|---|-------|--------|
-| **P0** | **12 — Fail-closed** | Boot guards; ротация ключей; убрать/зажать DEV_AUTH; webhook без query secret |
-| **P0** | **12b — SSRF** | CheckRedirect + IP pin + тесты 302→private |
-| **P1** | **13 — Cost abuse** | Credits/limits TTS+clone; fix idem↔credits; atomic quotas |
-| **P1** | **13b — Container & errors** | Non-root USER; sanitize 5xx; SafeMediaPath delete; LimitReader + magic |
-| **P2** | **14 — Auth & play** | Cookie/signed play; SameSite CSRF; CSP |
-| **P2** | **15 — Pay & ops** | YooKassa; lockdown metrics; PGSSLMODE=require |
+| | Эпоха | Pri | Работа | Effort |
+|---|-------|-----|--------|--------|
+| **1** | **12** | P0 | SSRF: `CheckRedirect` + IP pin + тесты | 0.5–1d |
+| **2** | **12** | P0 | Generate: claim → spend → CAS worker + refund | 1d |
+| **3** | **13** | P0 | Credits+limits: TTS, clone, karaoke, portrait | 1d |
+| **4** | **13** | P1 | Sanitize provider errors → `ProviderError` | 0.5d |
+| **5** | **13** | P1 | Dockerfile `USER` non-root | 0.5d |
+| **6** | **14** | P1 | One-time login → HttpOnly cookie | 1–2d |
+| **7** | **14** | P2 | Signed/TTL media; header-only webhook | 1d |
+| **8** | **15** | P2 | CI abuse tests; YooKassa; `PGSSLMODE=require` | 2d+ |
+
+**Спринт:** эпоха 12 = integrity (SSRF + idem); 13 = money burn + container; 14–15 = session/ops/pay.
 
 ---
 
-## Закрыто в эпохах 7–11 (кратко)
+## Закрыто ранее (эпохи 7–11 + 2.5–2.6)
 
-- **7:** RequireAuth, ownership, webhook secret, topup/simulate guards  
-- **8:** JWT+CSRF фронт, XSS  
-- **9:** routes extract, atomic credits, Postgres, Docker image bump  
-- **10:** visibility/discover/social, honest credits UI  
-- **11:** тесты, CI, redact, 2.4.0  
+- **7–11:** auth lockdown, CSRF/XSS, Postgres, atomic credits, CI, redact  
+- **2.5:** voice clone / cover upload  
+- **2.6:** karaoke + singing portrait  
+- **2.6.1:** fail-closed, durable JWT, `WEB_PUBLIC_URL`, MAX `/login`
 
-**Правило:** закрывать находки этого документа чеклистами новых эпох; не раздувать scope без EPOCH*.md.
+**Правило:** закрывать находки этого документа чеклистами новых эпох; не раздувать scope без `EPOCH*.md`.

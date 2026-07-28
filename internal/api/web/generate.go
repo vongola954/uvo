@@ -49,7 +49,7 @@ func (d *Deps) Generate(c *gin.Context) {
 		}
 	}
 
-	// Idempotency: same request_id returns existing job
+	// Idempotency: existing job → no spend
 	if req.RequestID != "" && !req.Sync {
 		if j, ok := d.Jobs.GetByRequestID(uid, req.RequestID); ok {
 			c.JSON(http.StatusAccepted, gin.H{"job_id": j.ID, "status": j.Status, "poll_url": "/api/jobs/" + j.ID, "idempotent": true})
@@ -57,17 +57,7 @@ func (d *Deps) Generate(c *gin.Context) {
 		}
 	}
 
-	if err := d.Credits.Spend(uid, 1); err != nil {
-		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
-		return
-	}
-	if err := d.Limiter.Allow(uid); err != nil {
-		d.Credits.Refund(uid, 1)
-		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
-		return
-	}
 	req.Duration = services.ClampDuration(req.Duration, 480)
-
 	genReq := &services.GenerateRequest{
 		UserID: uid, Prompt: req.Prompt, Style: req.Style, Lyrics: req.Lyrics,
 		Duration: req.Duration, Instrumental: req.Instrumental, VoiceID: req.VoiceID,
@@ -75,6 +65,15 @@ func (d *Deps) Generate(c *gin.Context) {
 	}
 
 	if req.Sync {
+		if err := d.Credits.Spend(uid, 1); err != nil {
+			c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+			return
+		}
+		if err := d.Limiter.Allow(uid); err != nil {
+			d.Credits.Refund(uid, 1)
+			middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+			return
+		}
 		track, err := d.Gen.Generate(genReq)
 		if err != nil {
 			d.Credits.Refund(uid, 1)
@@ -82,26 +81,43 @@ func (d *Deps) Generate(c *gin.Context) {
 			writeProviderErr(c, err)
 			return
 		}
+		middleware.IncGenOK()
 		c.JSON(200, gin.H{
 			"success": true, "track_id": track.ID, "title": track.Title,
 			"duration": track.Duration, "play_url": fmt.Sprintf("/tracks/%d/play", track.ID),
 			"balance": d.Credits.Balance(uid),
 		})
-			middleware.IncGenOK()
 		return
 	}
 
-	job := d.Jobs.Create(uid, req.RequestID)
-	if job.Status == string(services.JobDone) || job.Status == string(services.JobFailed) || job.Status == string(services.JobProcessing) {
-		if req.RequestID != "" && job.RequestID == req.RequestID && job.Status != string(services.JobPending) {
-			c.JSON(202, gin.H{"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "idempotent": true})
-			return
-		}
+	// Async: claim job first, then spend — only the create winner pays / starts worker.
+	job, created := d.Jobs.CreateOrClaim(uid, req.RequestID)
+	if !created {
+		c.JSON(http.StatusAccepted, gin.H{
+			"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "idempotent": true,
+		})
+		return
+	}
+
+	if err := d.Credits.Spend(uid, 1); err != nil {
+		d.Jobs.Delete(job.ID)
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, 1)
+		d.Jobs.Delete(job.ID)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
 	}
 
 	services.GoLimited(func() {
 		jobID, userID := job.ID, uid
-		d.Jobs.Update(jobID, func(j *models.JobRecord) { j.Status = string(services.JobProcessing) })
+		if !d.Jobs.ClaimProcessing(jobID) {
+			// Lost CAS — do not run provider; refund the credit we took as owner.
+			d.Credits.Refund(userID, 1)
+			return
+		}
 		track, err := d.Gen.Generate(genReq)
 		if err != nil {
 			d.Credits.Refund(userID, 1)
