@@ -80,7 +80,7 @@ func main() {
 		Tracks: trackRepo, Voice: voiceSvc, Cover: coverSvc, Karaoke: karaokeSvc, Portrait: portraitSvc,
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.6.1",
+		MaxOn: maxC.Enabled(), Version: "2.6.2",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
