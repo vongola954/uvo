@@ -125,7 +125,7 @@ func (c *AceDataClient) generateAsync(req *GenerateRequest) (*GenerateResponse, 
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	logrus.WithField("payload", string(jsonData)).Debug("AceData create request")
+	logrus.WithField("payload", redactBody(jsonData, 256)).Debug("AceData create request")
 
 	httpReq, err := http.NewRequest("POST", c.baseURL, bytes.NewReader(jsonData))
 	if err != nil {
@@ -148,7 +148,7 @@ func (c *AceDataClient) generateAsync(req *GenerateRequest) (*GenerateResponse, 
 
 	logrus.WithFields(logrus.Fields{
 		"status": resp.StatusCode,
-		"body":   string(body),
+		"body":   redactBody(body, 256),
 	}).Debug("AceData create response")
 
 	if resp.StatusCode != http.StatusOK {
@@ -211,11 +211,11 @@ func (c *AceDataClient) pollTask(taskID string) (*GenerateResponse, error) {
 			"task_id": taskID,
 			"attempt": attempt,
 			"status":  taskResp.StatusCode,
-			"body":    string(body),
+			"body":    redactBody(body, 256),
 		}).Debug("AceData poll response")
 
 		if taskResp.StatusCode != http.StatusOK {
-			logrus.WithField("body", string(body)).Warn("poll non-200, retrying")
+			logrus.WithField("body", redactBody(body, 128)).Warn("poll non-200, retrying")
 			time.Sleep(time.Duration(c.pollInt) * time.Second)
 			continue
 		}

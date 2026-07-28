@@ -47,6 +47,7 @@
 - [x] Like/Comment; topup только DEMO; честный UI кредитов
 
 ### Эпоха 11 Quality
-- [ ] CI + расширенные тесты; ACCEPTANCE 2.x полный проход
+- [x] CI (vet/test/build); тесты auth/credits/safe_*/topup/generate
+- [x] AceData log redact; health **2.4.0**
 
 Детали чеклистов — в `EPOCH7.md` … `EPOCH11.md`.

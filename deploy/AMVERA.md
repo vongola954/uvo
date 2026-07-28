@@ -84,7 +84,7 @@ PGSSLMODE=disable
 
 1. Настройки приложения → активировать бесплатный домен Amvera  
 2. `WEB_PUBLIC_URL=https://that-domain`  
-3. Открыть `https://…/health` → `"version":"2.2.0"`, `"db_driver":"postgres"`, `acedata`  
+3. Открыть `https://…/health` → `"version":"2.4.0"`, `"db_driver":"postgres"`, `acedata`  
 4. Студия: при `ALLOW_ANON=false` — Demo token только если временно `DEV_AUTH=true` (только для отладки)
 
 ---

@@ -140,3 +140,12 @@
 - Docker non-root, Go 1.22
 - Job `idem_key` + cleanup
 
+### Эпоха 10 (2.3.0)
+- Visibility + discover; social like/comment
+- Honest credits / DEMO topup
+
+### Эпоха 11 (2.4.0)
+- Расширенные тесты + GitHub Actions CI
+- AceData body redact в логах
+- ACCEPTANCE 2.x обновлён
+

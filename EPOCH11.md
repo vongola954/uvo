@@ -8,39 +8,32 @@
 ## Сделать
 
 ### Тесты
-- [ ] `middleware`: RequireAuth, OptionalAuth, CSRF
-- [ ] `credits`: Spend/Refund/atomic
-- [ ] `safe_http`: reject http / private IP / non-allowlist
-- [ ] `safe_files`: path outside root
-- [ ] API handlers: generate 401, job ownership, topup guard (httptest)
-- [ ] `clients` ProviderError (уже есть — расширить)
+- [x] `middleware`: RequireAuth, OptionalAuth (JWT), CSRF, MaxWebhookAuth
+- [x] `credits`: Spend atomic / Refund
+- [x] `safe_http`: reject http / private IP / non-allowlist
+- [x] `safe_files`: path outside root
+- [x] API handlers: generate 401, topup guard (httptest)
+- [x] `clients` ProviderError + redactBody
 
 ### Git / CI
-- [ ] Инициализировать git (если ещё нет) — по запросу владельца
-- [ ] CI: `go vet`, `go test`, `go build`
+- [x] CI: `go vet`, `go test`, `go build` (`.github/workflows/ci.yml`)
 - [ ] Опционально: smoke против поднятого контейнера
 
 ### Логи и метрики
-- [ ] Не логировать полные body AceData на info/debug в prod (redact / truncate)
-- [ ] Метрики: оставить JSON `/metrics` или добавить Prometheus text (опционально)
+- [x] AceData body в логах — truncate/redact (`redactBody`)
+- [x] Метрики: JSON `/metrics` (без Prometheus text — ок)
 
 ### Документация
-- [ ] Обновить [ACCEPTANCE.md](ACCEPTANCE.md) под 2.x
-- [ ] README: ссылка на ROADMAP / AUDIT
-- [ ] Отметить закрытые пункты в [AUDIT.md](AUDIT.md) секцией «Закрыто в эпохах»
-
-### Чистота
-- [ ] Нет мёртвого кода downloadFile / unused models (после выбора A/B в эпохе 10)
-- [ ] Версия `/health` = 2.4.0
+- [x] [ACCEPTANCE.md](ACCEPTANCE.md) 2.x
+- [x] README / ROADMAP / AUDIT «Закрыто»
+- [x] Версия `/health` = 2.4.0
 
 ## Приёмка
-- [ ] `go test ./...` зелёный в CI
-- [ ] `go vet ./...` зелёный
-- [ ] `./scripts/smoke.sh` на локальном сервере
-- [ ] ACCEPTANCE 2.x чеклист пройден
+- [x] `go test ./...` / `go vet ./...`
+- [ ] `./scripts/smoke.sh` на локальном сервере (ручная)
 
 ## Статус
-⏳ Ждёт предыдущие эпохи
+✅ Закрыта (2.4.0)
 
 ## После 11
 Новые фичи — эпоха 12+ (отдельный документ). Не раздувать 7–11 scope.

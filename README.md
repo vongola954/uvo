@@ -52,9 +52,9 @@ BOT_MODE=polling   # or webhook + POST /api/max/webhook
 - [FIXPLAN.md](FIXPLAN.md) — приоритеты P0→P2
 - [ROADMAP.md](ROADMAP.md) — эпохи 1–11
 
-Текущая версия: **2.3.0** (эпохи 7–10).
+Текущая версия: **2.4.0** (эпохи 7–11).
 
 ## Epochs
 1 AceData · 2 Reliability · 3 Security · 4 MAX · 5 Product UX · 6 Polish  
-**Done:** 7 Lockdown · 8 Auth UX · 9 Prod foundation · 10 Product & pay  
-**Next:** [EPOCH11.md](EPOCH11.md) Quality & CI
+**Done:** 7 Lockdown · 8 Auth UX · 9 Prod foundation · 10 Product & pay · 11 Quality & CI  
+Дальше: по запросу (ЮKassa / эпоха 12+). См. [ROADMAP.md](ROADMAP.md).

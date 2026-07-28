@@ -12,7 +12,9 @@ import (
 
 func testDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	// Unique DSN per test — shared :memory: races across packages/tests.
+	dsn := "file:credits_" + t.Name() + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,5 +58,16 @@ func TestCreditSpendAtomic(t *testing.T) {
 	}
 	if c.Balance(uid) != 0 {
 		t.Fatalf("final bal %d", c.Balance(uid))
+	}
+}
+
+func TestCreditRefund(t *testing.T) {
+	db := testDB(t)
+	c := NewCreditService(db)
+	uid := "refund-u"
+	_ = c.Spend(uid, 1)
+	c.Refund(uid, 1)
+	if c.Balance(uid) != 3 {
+		t.Fatalf("after refund want 3, got %d", c.Balance(uid))
 	}
 }
