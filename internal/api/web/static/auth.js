@@ -13,6 +13,19 @@
     } catch (_) {}
   }
 
+  // Capture ?token= from MAX /login deep link, then strip from URL
+  (function captureTokenFromURL() {
+    try {
+      const u = new URL(location.href);
+      const t = u.searchParams.get('token');
+      if (t) {
+        setToken(t);
+        u.searchParams.delete('token');
+        history.replaceState({}, '', u.pathname + u.search + u.hash);
+      }
+    } catch (_) {}
+  })();
+
   function csrfToken() {
     const m = document.cookie.match(/(?:^|;\s*)uvo_csrf=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
@@ -35,7 +48,7 @@
     }
     const res = await fetch(path, Object.assign({}, opts, { headers }));
     if (res.status === 401) {
-      const err = new Error('Нужна авторизация: получите demo-токен или включите ALLOW_ANON');
+      const err = new Error('Нужна авторизация: в MAX-боте отправьте /login и откройте ссылку');
       err.status = 401;
       throw err;
     }
@@ -76,7 +89,7 @@
   function mountAuthBar(parent) {
     if (!parent) return;
     const bar = el('div', { className: 'flex items-center gap-2 text-xs text-zinc-500 mb-4' });
-    const status = el('span', { text: getToken() ? 'токен: ok' : 'токен: нет' });
+    const status = el('span', { text: getToken() ? 'сессия: ok' : 'сессия: нет — MAX /login' });
     status.id = 'uvo-auth-status';
     const btn = el('button', {
       type: 'button',
@@ -85,7 +98,7 @@
       onclick: async () => {
         try {
           const t = await ensureDevToken();
-          status.textContent = t ? 'токен: ok' : 'DEV_AUTH выключен';
+          status.textContent = t ? 'сессия: ok (demo)' : 'DEV_AUTH выключен — используйте /login в MAX';
         } catch (e) {
           status.textContent = 'ошибка токена';
         }

@@ -10,26 +10,28 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"uvo/internal/clients"
+	"uvo/internal/middleware"
 	"uvo/internal/services"
 )
 
 type Bot struct {
-	max     *clients.MAXClient
-	gen     *services.GenerationService
-	limiter *services.RateLimiter
-	credits *services.CreditService
-	states  sync.Map
-	marker  *int64
-	stop    chan struct{}
-	webURL  string
+	max       *clients.MAXClient
+	gen       *services.GenerationService
+	limiter   *services.RateLimiter
+	credits   *services.CreditService
+	states    sync.Map
+	marker    *int64
+	stop      chan struct{}
+	webURL    string
+	jwtSecret string
 }
 
-func New(max *clients.MAXClient, gen *services.GenerationService, lim *services.RateLimiter, credits *services.CreditService) *Bot {
+func New(max *clients.MAXClient, gen *services.GenerationService, lim *services.RateLimiter, credits *services.CreditService, jwtSecret string) *Bot {
 	web := strings.TrimRight(os.Getenv("WEB_PUBLIC_URL"), "/")
 	if web == "" {
 		web = "http://127.0.0.1:8010"
 	}
-	return &Bot{max: max, gen: gen, limiter: lim, credits: credits, stop: make(chan struct{}), webURL: web}
+	return &Bot{max: max, gen: gen, limiter: lim, credits: credits, stop: make(chan struct{}), webURL: web, jwtSecret: jwtSecret}
 }
 
 func (b *Bot) studioURL(path string) string {
@@ -125,23 +127,25 @@ func (b *Bot) HandleText(userID, text string, chatID int64) {
 	low := strings.TrimSpace(text)
 	switch {
 	case low == "/start" || low == "start":
-		b.sendHome(chatID, "")
+		b.sendHome(chatID, "Войти в веб: /login")
 	case low == "/help" || low == "❓ /help":
 		_ = b.max.SendStudio(chatID,
-			"Команды:\n/generate — трек в чате\n/studio — веб-морда\n/tracks — мои треки (ссылка)\n\nПолный UI — в кнопке «веб-студия».",
+			"Команды:\n/generate — трек в чате\n/login — вход в веб-студию\n/studio — ссылка\n/tracks — мои треки\n\nПолный UI — после /login.",
 			b.studioURL("/"))
+	case low == "/login" || low == "/web" || low == "/auth":
+		b.sendLoginLink(chatID, userID)
 	case low == "/studio" || strings.Contains(low, "студи"):
-		_ = b.max.SendStudio(chatID, "Веб-студия UVO:", b.studioURL("/"))
+		b.sendLoginLink(chatID, userID)
 	case low == "/tracks":
-		_ = b.max.SendStudio(chatID, "Твои треки:", b.studioURL("/tracks.html"))
+		b.sendLoginLinkTo(chatID, userID, "/tracks.html")
 	case low == "/feed":
-		_ = b.max.SendStudio(chatID, "Лента:", b.studioURL("/feed.html"))
+		b.sendLoginLinkTo(chatID, userID, "/feed.html")
 	case low == "/playlists":
-		_ = b.max.SendStudio(chatID, "Плейлисты:", b.studioURL("/playlists.html"))
+		b.sendLoginLinkTo(chatID, userID, "/playlists.html")
 	case low == "/generate" || low == "⚡ /generate":
 		b.states.Store(userID, "await_prompt")
-		_ = b.max.SendMessage(chatID, "Опиши трек одним сообщением (жанр, настроение, тема):\n\nИли открой студию для полного UI.")
-		_ = b.max.SendStudio(chatID, "Студия:", b.studioURL("/"))
+		_ = b.max.SendMessage(chatID, "Опиши трек одним сообщением (жанр, настроение, тема):\n\nИли /login → веб-студия.")
+		b.sendLoginLink(chatID, userID)
 	default:
 		if st, ok := b.states.Load(userID); ok && st == "await_prompt" {
 			b.states.Delete(userID)
@@ -174,15 +178,37 @@ func (b *Bot) HandleText(userID, text string, chatID int64) {
 					_ = b.max.SendMessage(chatID, "Ошибка: "+msg)
 					return
 				}
-				play := b.studioURL(fmt.Sprintf("/tracks.html"))
+				play := b.studioURL("/tracks.html")
 				_ = b.max.SendStudio(chatID,
-					fmt.Sprintf("Готово: %s (id %d)\nСлушай в веб-студии:", track.Title, track.ID),
+					fmt.Sprintf("Готово: %s (id %d)\nСлушай в веб-студии (/login):", track.Title, track.ID),
 					play)
 			}()
 			return
 		}
-		b.sendHome(chatID, "Не понял. /help или кнопка студии.")
+		b.sendHome(chatID, "Не понял. /help · /login · /generate")
 	}
+}
+
+func (b *Bot) sendLoginLink(chatID int64, userID string) {
+	b.sendLoginLinkTo(chatID, userID, "/")
+}
+
+func (b *Bot) sendLoginLinkTo(chatID int64, userID, path string) {
+	if b.jwtSecret == "" {
+		_ = b.max.SendStudio(chatID, "Студия (без автологина):", b.studioURL(path))
+		return
+	}
+	tok, err := middleware.IssueToken(b.jwtSecret, userID, 7*24*time.Hour)
+	if err != nil {
+		_ = b.max.SendMessage(chatID, "Не удалось выдать сессию")
+		return
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	url := b.studioURL(path) + sep + "token=" + tok
+	_ = b.max.SendStudio(chatID, "Вход в UVO (ссылка на 7 дней, только для вас):", url)
 }
 
 func (b *Bot) HandleWebhookUpdate(u clients.MAXUpdate) {

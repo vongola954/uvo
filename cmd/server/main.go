@@ -74,13 +74,13 @@ func main() {
 		logrus.Info("HEDRA_API_KEY не задан — портрет через Kling-клип (без точного lip-sync)")
 	}
 
-	maxBot := bot.New(maxC, genSvc, limiter, credits)
+	maxBot := bot.New(maxC, genSvc, limiter, credits, cfg.JWTSecret)
 	deps := &webapi.Deps{
 		Cfg: cfg, DB: gdb, Gen: genSvc, Credits: credits, Limiter: limiter, Jobs: jobs,
 		Tracks: trackRepo, Voice: voiceSvc, Cover: coverSvc, Karaoke: karaokeSvc, Portrait: portraitSvc,
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.6.0",
+		MaxOn: maxC.Enabled(), Version: "2.6.1",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -94,6 +94,6 @@ func main() {
 	r.Use(middleware.RecoveryJSON(), gin.Logger(), middleware.Metrics(), middleware.OptionalAuth(cfg.JWTSecret), middleware.CSRF())
 	webapi.Register(r, deps)
 
-	logrus.Infof("UVO 2.6 on %s:%d (db=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver)
+	logrus.Infof("UVO 2.6.1 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

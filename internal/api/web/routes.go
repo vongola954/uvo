@@ -48,7 +48,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.6.0"
+		d.Version = "2.6.1"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -69,14 +69,19 @@ func Register(r *gin.Engine, d *Deps) {
 		}
 		hedraOn := d.Hedra != nil && d.Hedra.Enabled()
 		c.JSON(200, gin.H{
-			"status":           status,
-			"version":          d.Version,
-			"max_bot":          d.MaxOn,
-			"acedata":          aceSt,
-			"hedra_portrait":   hedraOn,
-			"music_provider":   "acedata_only",
-			"db_driver":        d.Cfg.DBDriver,
-			"hint":             "При provider_balance_empty пополните https://platform.acedata.cloud",
+			"status":         status,
+			"version":        d.Version,
+			"max_bot":        d.MaxOn,
+			"acedata":        aceSt,
+			"hedra_portrait": hedraOn,
+			"music_provider": "acedata_only",
+			"db_driver":      d.Cfg.DBDriver,
+			"prod_guards":    d.Cfg != nil && d.Cfg.IsProduction() && os.Getenv("UVO_ALLOW_INSECURE") != "true",
+			"allow_anon":     os.Getenv("ALLOW_ANON") == "true",
+			"dev_auth":       os.Getenv("DEV_AUTH") == "true",
+			"demo_topup":     os.Getenv("DEMO_TOPUP") == "true",
+			"web_public_url": d.Cfg.WebPublicURL,
+			"hint":           "При provider_balance_empty пополните https://platform.acedata.cloud · вход в веб: MAX /login",
 		})
 	})
 

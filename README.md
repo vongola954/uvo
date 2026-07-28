@@ -35,12 +35,15 @@ docker compose up --build
 ALLOW_ANON=false
 DEV_AUTH=false
 DEMO_TOPUP=false
-JWT_SECRET=<random>
-MAX_WEBHOOK_SECRET=<random>   # required for POST /api/max/webhook
-BOT_MODE=polling   # or webhook + POST /api/max/webhook
+JWT_SECRET=<random>          # или авто из /data/jwt_secret
+WEB_PUBLIC_URL=https://uvo-baskakovanton.amvera.io
+MAX_WEBHOOK_SECRET=<random>  # for webhook mode
+BOT_MODE=polling
 ```
 
-Локальный demo: `ALLOW_ANON=true` (и при необходимости `DEV_AUTH=true`, `DEMO_TOPUP=true`).
+Вход в веб на проде: в MAX-боте команда **`/login`** → ссылка с JWT.
+
+Локальный demo: `UVO_ALLOW_INSECURE=true` + `ALLOW_ANON=true` (и при необходимости `DEV_AUTH=true`, `DEMO_TOPUP=true`).
 
 ## Оплата
 - Пакеты кредитов в `GET /api/credits` (`packs`, `payment: coming_soon`).

@@ -89,6 +89,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
+	if err := cfg.ApplyProductionGuards(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
 }
 

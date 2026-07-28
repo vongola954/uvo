@@ -16,6 +16,12 @@ ENV WEB_HOST=0.0.0.0 \
     WEB_PORT=80 \
     PORT=80 \
     DB_DRIVER=postgres \
-    MEDIA_ROOT=/data/media
+    MEDIA_ROOT=/data/media \
+    WEB_PUBLIC_URL=https://uvo-baskakovanton.amvera.io \
+    ALLOW_ANON=false \
+    DEV_AUTH=false \
+    DEMO_TOPUP=false \
+    VOICE_CLONE_PROVIDER=acedata \
+    BOT_MODE=polling
 EXPOSE 80
 CMD ["./uvo"]
