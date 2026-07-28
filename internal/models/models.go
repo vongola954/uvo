@@ -20,12 +20,27 @@ type Track struct {
 	Key            string
 	BPM            int
 	VoiceProfileID string
+	ProviderAudioID string // AceData/Suno audio id for stems/mp4/timing
+	VideoPath       string // local or remote mp4 path/url
+	InstrumentalPath string
+	VocalsPath       string
 	IsPublic       bool      `gorm:"default:false"`
 	PlayCount      int       `gorm:"default:0"`
 	Prompt         string
 	Lyrics         string
 	Instrumental   bool      `gorm:"default:false"`
 	CreatedAt      time.Time
+}
+
+// MediaAsset stores generated karaoke/portrait artifacts.
+type MediaAsset struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"not null;index"`
+	TrackID   uint      `gorm:"not null;index"`
+	Kind      string    `gorm:"not null;index"` // karaoke | portrait
+	FilePath  string
+	MetaJSON  string // timing words, provider ids, etc.
+	CreatedAt time.Time
 }
 
 type VoiceProfile struct {

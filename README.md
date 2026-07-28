@@ -52,16 +52,18 @@ BOT_MODE=polling   # or webhook + POST /api/max/webhook
 - [FIXPLAN.md](FIXPLAN.md) — приоритеты P0→P2
 - [ROADMAP.md](ROADMAP.md) — эпохи 1–11
 
-Текущая версия: **2.5.0** (голос AceData + кавер + правки UI).
+Текущая версия: **2.6.0** (караоке + поющий портрет).
 
 ## Studio
 - **Генерация** — промпт / стиль / голос (AceData persona)
 - **Клон голоса** — `POST /api/voice/clone` → AceData `/suno/voices` (нужен `WEB_PUBLIC_URL`)
 - **Кавер** — `POST /api/cover` (загрузка любого трека + свой голос, −2 кредита)
 - **Правки** — на `/tracks.html` → «Правка (−1)»
+- **Караоке** — `/tracks.html` → «Караоке» → stems + timing + mp4 (−2)
+- **Поющий портрет** — фото + трек → Hedra lip-sync (`HEDRA_API_KEY`) или Kling-клип (−2/−3)
 
 Для clone/cover AceData скачивает файлы с вашего домена: `GET /uploads/:name`. На Amvera задайте `WEB_PUBLIC_URL=https://uvo-….amvera.io`.
 
 ## Epochs
 1 AceData · 2 Reliability · 3 Security · 4 MAX · 5 Product UX · 6 Polish  
-**Done:** 7–11 · **2.5:** voice/cover studio
+**Done:** 7–11 · **2.5** voice/cover · **2.6** karaoke/portrait

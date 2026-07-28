@@ -53,9 +53,12 @@ type GenerateRequest struct {
 
 type GenerateResponse struct {
 	AudioURL string
+	VideoURL string
+	AudioID  string
 	TaskID   string
 	Title    string
 	Duration float64
+	Lyric    string
 }
 
 // Real AceData response structures
@@ -70,6 +73,7 @@ type aceAudioItem struct {
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
 	Style    string  `json:"style"`
+	Lyric    string  `json:"lyric"`
 	Duration float64 `json:"duration"`
 	AudioURL string  `json:"audio_url"`
 	ImageURL string  `json:"image_url"`
@@ -245,12 +249,7 @@ func (c *AceDataClient) pollTask(taskID string) (*GenerateResponse, error) {
 				if item.AudioURL == "" {
 					return nil, fmt.Errorf("acedata returned empty audio_url, full response: %s", string(body))
 				}
-				return &GenerateResponse{
-					AudioURL: item.AudioURL,
-					TaskID:   taskID,
-					Title:    item.Title,
-					Duration: item.Duration,
-				}, nil
+				return itemToGenerateResponse(item, taskID), nil
 
 			case "failed", "error":
 				return nil, fmt.Errorf("task failed with state=%s, response: %s", item.State, string(body))
@@ -259,15 +258,21 @@ func (c *AceDataClient) pollTask(taskID string) (*GenerateResponse, error) {
 
 		// Fallback: success + data with audio_url but without explicit state
 		if taskResult.Success && len(taskResult.Data) > 0 && taskResult.Data[0].AudioURL != "" {
-			item := taskResult.Data[0]
-			return &GenerateResponse{
-				AudioURL: item.AudioURL,
-				TaskID:   taskID,
-				Title:    item.Title,
-				Duration: item.Duration,
-			}, nil
+			return itemToGenerateResponse(taskResult.Data[0], taskID), nil
 		}
 
 		time.Sleep(time.Duration(c.pollInt) * time.Second)
+	}
+}
+
+func itemToGenerateResponse(item aceAudioItem, taskID string) *GenerateResponse {
+	return &GenerateResponse{
+		AudioURL: item.AudioURL,
+		VideoURL: item.VideoURL,
+		AudioID:  item.ID,
+		TaskID:   taskID,
+		Title:    item.Title,
+		Duration: item.Duration,
+		Lyric:    item.Lyric,
 	}
 }

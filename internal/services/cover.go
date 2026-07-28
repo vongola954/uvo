@@ -134,14 +134,18 @@ func (s *CoverService) CoverFromUpload(req *CoverFromUploadRequest) (*models.Tra
 	}
 
 	track := &models.Track{
-		UserID:         req.UserID,
-		Title:          trackTitle,
-		FilePath:       outPath,
-		Duration:       dur,
-		Genre:          style,
-		Prompt:         prompt,
-		Lyrics:         lyric,
-		VoiceProfileID: req.VoiceID,
+		UserID:          req.UserID,
+		Title:           trackTitle,
+		FilePath:        outPath,
+		Duration:        dur,
+		Genre:           style,
+		Prompt:          prompt,
+		Lyrics:          lyric,
+		VoiceProfileID:  req.VoiceID,
+		ProviderAudioID: resp.AudioID,
+	}
+	if track.ProviderAudioID == "" {
+		track.ProviderAudioID = up.AudioID
 	}
 	if err := s.trackRepo.Create(track); err != nil {
 		return nil, err

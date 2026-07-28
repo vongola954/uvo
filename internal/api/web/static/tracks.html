@@ -10,8 +10,23 @@
 <h1 class="text-2xl font-bold mt-4 mb-6">Мои треки</h1>
 <div id="auth"></div>
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
+<div id="portrait-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+  <div class="bg-zinc-900 border border-white/10 rounded-2xl p-5 max-w-md w-full space-y-3">
+    <h2 class="font-bold text-white">Поющий портрет</h2>
+    <p class="text-xs text-zinc-500">Загрузите фото лица. С Hedra — lip-sync; без ключа — Kling-клип (~10с).</p>
+    <input id="portrait-file" type="file" accept="image/*" class="w-full text-sm">
+    <input id="portrait-prompt" type="text" placeholder="Промпт (опц.)" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm">
+    <div class="flex gap-2">
+      <button id="portrait-go" class="flex-1 text-xs px-3 py-2 rounded-lg bg-emerald-500 text-black font-bold">Создать</button>
+      <button id="portrait-cancel" class="text-xs px-3 py-2 rounded-lg border border-white/10">Отмена</button>
+    </div>
+    <p id="portrait-status" class="text-xs text-zinc-500"></p>
+    <video id="portrait-preview" class="hidden w-full rounded-xl" controls></video>
+  </div>
+</div>
 <script>
 UVO.mountAuthBar(document.getElementById('auth'));
+let portraitTrackId = null;
 async function setPublic(id, isPublic) {
   const res = await UVO.api('/api/tracks/' + id + '/visibility', {
     method: 'PATCH',
@@ -45,13 +60,9 @@ async function editTrack(id, title) {
   if (promptVal) body.prompt = promptVal;
   if (style) body.style = style;
   if (lyrics) body.lyrics = lyrics;
-  if (!Object.keys(body).length) {
-    alert('Нечего менять');
-    return;
-  }
+  if (!Object.keys(body).length) { alert('Нечего менять'); return; }
   const res = await UVO.api('/api/tracks/' + id + '/edit', {
-    method: 'POST',
-    body: JSON.stringify(body),
+    method: 'POST', body: JSON.stringify(body),
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -61,6 +72,38 @@ async function editTrack(id, title) {
   alert('Трек обновлён (−1 кредит): ' + (title || id));
   load();
 }
+function openPortrait(id) {
+  portraitTrackId = id;
+  document.getElementById('portrait-modal').classList.remove('hidden');
+  document.getElementById('portrait-status').textContent = '';
+  document.getElementById('portrait-preview').classList.add('hidden');
+}
+document.getElementById('portrait-cancel').onclick = () => {
+  document.getElementById('portrait-modal').classList.add('hidden');
+};
+document.getElementById('portrait-go').onclick = async () => {
+  const file = document.getElementById('portrait-file').files[0];
+  if (!file || !portraitTrackId) { alert('Выберите фото'); return; }
+  const st = document.getElementById('portrait-status');
+  st.textContent = 'Генерация портрета… (может занять несколько минут)';
+  try {
+    await UVO.ensureDevToken();
+    const fd = new FormData();
+    fd.append('image', file);
+    const p = document.getElementById('portrait-prompt').value;
+    if (p) fd.append('prompt', p);
+    const res = await UVO.api('/api/tracks/' + portraitTrackId + '/portrait', { method: 'POST', body: fd });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((d.error && d.error.message) || res.status);
+    const pr = d.portrait || {};
+    st.textContent = (pr.note || pr.provider || 'ok') + ' · −' + (pr.cost || '?') + ' кр.';
+    const v = document.getElementById('portrait-preview');
+    v.src = pr.video_url;
+    v.classList.remove('hidden');
+  } catch (e) {
+    st.textContent = e.message;
+  }
+};
 async function load() {
   const el = document.getElementById('list');
   try {
@@ -82,24 +125,19 @@ async function load() {
         UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + id + '/play' }),
       ]);
       const actions = UVO.el('div', { className: 'flex flex-wrap gap-2' });
-      const btnVis = UVO.el('button', {
-        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
-        text: pub ? 'Сделать приватным' : 'Сделать публичным',
-      });
-      btnVis.onclick = () => setPublic(id, !pub).catch(e => alert(e.message));
-      const btnShare = UVO.el('button', {
-        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
-        text: 'В ленту',
-      });
-      btnShare.onclick = () => shareFeed(id);
-      const btnEdit = UVO.el('button', {
-        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
-        text: 'Правка (−1)',
-      });
-      btnEdit.onclick = () => editTrack(id, title);
-      actions.appendChild(btnVis);
-      actions.appendChild(btnShare);
-      actions.appendChild(btnEdit);
+      const mk = (text, fn) => {
+        const b = UVO.el('button', {
+          className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
+          text,
+        });
+        b.onclick = fn;
+        actions.appendChild(b);
+      };
+      mk(pub ? 'Сделать приватным' : 'Сделать публичным', () => setPublic(id, !pub).catch(e => alert(e.message)));
+      mk('В ленту', () => shareFeed(id));
+      mk('Правка (−1)', () => editTrack(id, title));
+      mk('Караоке (−2)', () => { location.href = '/karaoke.html?id=' + id; });
+      mk('Портрет', () => openPortrait(id));
       card.appendChild(actions);
       el.appendChild(card);
     });

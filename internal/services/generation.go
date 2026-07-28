@@ -92,17 +92,30 @@ func (s *GenerationService) Generate(req *GenerateRequest) (*models.Track, error
 	}
 
 	track := &models.Track{
-		UserID:       req.UserID,
-		Title:        title,
-		FilePath:     filePath,
-		Duration:     duration,
-		Genre:        req.Style,
-		Key:          req.Key,
-		BPM:          req.BPM,
-		Prompt:       req.Prompt,
-		Lyrics:       req.Lyrics,
-		Instrumental: req.Instrumental,
-		VoiceProfileID: req.VoiceID,
+		UserID:          req.UserID,
+		Title:           title,
+		FilePath:        filePath,
+		Duration:        duration,
+		Genre:           req.Style,
+		Key:             req.Key,
+		BPM:             req.BPM,
+		Prompt:          req.Prompt,
+		Lyrics:          req.Lyrics,
+		Instrumental:    req.Instrumental,
+		VoiceProfileID:  req.VoiceID,
+		ProviderAudioID: resp.AudioID,
+	}
+	if resp.Lyric != "" && track.Lyrics == "" {
+		track.Lyrics = resp.Lyric
+	}
+	if resp.VideoURL != "" {
+		vidName := uuid.New().String() + ".mp4"
+		vidPath := filepath.Join(s.getMediaRoot(), vidName)
+		if err := SafeDownload(resp.VideoURL, vidPath, 80<<20); err == nil {
+			track.VideoPath = vidPath
+		} else {
+			track.VideoPath = resp.VideoURL // keep remote URL as fallback
+		}
 	}
 
 	if err := s.trackRepo.Create(track); err != nil {

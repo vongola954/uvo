@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,12 +31,15 @@ type Deps struct {
 	Tracks    *repository.TrackRepository
 	Voice     *services.VoiceCloneService
 	Cover     *services.CoverService
+	Karaoke   *services.KaraokeService
+	Portrait  *services.PortraitService
 	Social    *services.SocialService
 	Playlists *services.PlaylistService
 	Edit      *services.EditService
 	Search    *services.SearchService
 	Ace       *clients.AceDataClient
 	Eleven    *clients.ElevenLabsClient
+	Hedra     *clients.HedraClient
 	MaxBot    *bot.Bot
 	MaxOn     bool
 	Version   string
@@ -43,16 +48,18 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.5.0"
+		d.Version = "2.6.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
 	r.GET("/", func(c *gin.Context) { c.File("./internal/api/web/static/index.html") })
 	r.GET("/tracks.html", func(c *gin.Context) { c.File("./internal/api/web/static/tracks.html") })
+	r.GET("/karaoke.html", func(c *gin.Context) { c.File("./internal/api/web/static/karaoke.html") })
 	r.GET("/feed.html", func(c *gin.Context) { c.File("./internal/api/web/static/feed.html") })
 	r.GET("/playlists.html", func(c *gin.Context) { c.File("./internal/api/web/static/playlists.html") })
 	r.GET("/metrics", middleware.MetricsHandler)
 	r.GET("/uploads/:name", d.serveUpload)
+	r.GET("/media/assets/:name", d.serveMediaAsset)
 
 	r.GET("/health", func(c *gin.Context) {
 		aceSt := d.Ace.Status()
@@ -60,20 +67,25 @@ func Register(r *gin.Engine, d *Deps) {
 		if !aceSt.OK {
 			status = "degraded"
 		}
+		hedraOn := d.Hedra != nil && d.Hedra.Enabled()
 		c.JSON(200, gin.H{
-			"status":         status,
-			"version":        d.Version,
-			"max_bot":        d.MaxOn,
-			"acedata":        aceSt,
-			"music_provider": "acedata_only",
-			"db_driver":      d.Cfg.DBDriver,
-			"hint":           "При provider_balance_empty пополните https://platform.acedata.cloud",
+			"status":           status,
+			"version":          d.Version,
+			"max_bot":          d.MaxOn,
+			"acedata":          aceSt,
+			"hedra_portrait":   hedraOn,
+			"music_provider":   "acedata_only",
+			"db_driver":        d.Cfg.DBDriver,
+			"hint":             "При provider_balance_empty пополните https://platform.acedata.cloud",
 		})
 	})
 
 	r.POST("/api/auth/token", d.authToken)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
+	r.GET("/tracks/:id/instrumental", d.playInstrumental)
+	r.GET("/tracks/:id/vocals", d.playVocals)
+	r.GET("/tracks/:id/video", d.playVideo)
 	r.GET("/api/discover", d.discover)
 
 	api := r.Group("/api")
@@ -83,6 +95,8 @@ func Register(r *gin.Engine, d *Deps) {
 		api.GET("/jobs/:id", d.GetJob)
 		api.GET("/tracks", d.listTracks)
 		api.PATCH("/tracks/:id/visibility", d.setTrackVisibility)
+		api.POST("/tracks/:id/karaoke", d.makeKaraoke)
+		api.POST("/tracks/:id/portrait", d.makePortrait)
 		api.GET("/styles", func(c *gin.Context) { c.JSON(200, gin.H{"styles": services.StyleLibrary}) })
 		api.GET("/voices", d.listVoices)
 		api.GET("/feed", d.getFeed)
@@ -176,6 +190,65 @@ func (d *Deps) playTrack(c *gin.Context) {
 		return
 	}
 	c.File(safe)
+}
+
+func (d *Deps) serveTrackSide(c *gin.Context, which string) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	track, err := d.Tracks.GetByID(uint(id))
+	if err != nil || track == nil {
+		middleware.AbortJSON(c, 404, "not_found", "not found")
+		return
+	}
+	uid := middleware.UserID(c)
+	if !track.IsPublic && track.UserID != uid {
+		if uid == "" {
+			middleware.AbortJSON(c, 401, "unauthorized", "Bearer token required")
+			return
+		}
+		middleware.AbortJSON(c, 403, "forbidden", "not your track")
+		return
+	}
+	var path string
+	switch which {
+	case "instrumental":
+		path = track.InstrumentalPath
+	case "vocals":
+		path = track.VocalsPath
+	case "video":
+		path = track.VideoPath
+	}
+	if path == "" {
+		middleware.AbortJSON(c, 404, "not_found", which+" not ready — создайте караоке")
+		return
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		c.Redirect(302, path)
+		return
+	}
+	safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, path)
+	if err != nil {
+		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
+		return
+	}
+	c.File(safe)
+}
+
+func (d *Deps) playInstrumental(c *gin.Context) { d.serveTrackSide(c, "instrumental") }
+func (d *Deps) playVocals(c *gin.Context)       { d.serveTrackSide(c, "vocals") }
+func (d *Deps) playVideo(c *gin.Context)        { d.serveTrackSide(c, "video") }
+
+func (d *Deps) serveMediaAsset(c *gin.Context) {
+	name := c.Param("name")
+	path, err := services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, name))
+	if err != nil {
+		// also try basename only under media root
+		path, err = services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, filepath.Base(name)))
+		if err != nil {
+			c.Status(404)
+			return
+		}
+	}
+	c.File(path)
 }
 
 func (d *Deps) listTracks(c *gin.Context) {
@@ -605,6 +678,74 @@ func (d *Deps) serveUpload(c *gin.Context) {
 		return
 	}
 	c.File(path)
+}
+
+func (d *Deps) makeKaraoke(c *gin.Context) {
+	if d.Karaoke == nil {
+		middleware.AbortJSON(c, 501, "not_configured", "karaoke unavailable")
+		return
+	}
+	id, _ := strconv.Atoi(c.Param("id"))
+	uid := middleware.UserID(c)
+	if err := d.Credits.Spend(uid, 2); err != nil {
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	res, err := d.Karaoke.Build(uid, uint(id))
+	if err != nil {
+		d.Credits.Refund(uid, 2)
+		if pe := clients.AsProviderError(err); pe != nil {
+			c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
+			return
+		}
+		middleware.AbortJSON(c, 500, "karaoke_failed", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"karaoke": res, "balance": d.Credits.Balance(uid), "player_url": fmt.Sprintf("/karaoke.html?id=%d", id)})
+}
+
+func (d *Deps) makePortrait(c *gin.Context) {
+	if d.Portrait == nil {
+		middleware.AbortJSON(c, 501, "not_configured", "portrait unavailable")
+		return
+	}
+	id, _ := strconv.Atoi(c.Param("id"))
+	uid := middleware.UserID(c)
+	file, err := c.FormFile("image")
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", "image required (multipart field: image)")
+		return
+	}
+	f, err := file.Open()
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 10<<20+1))
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", "read image failed")
+		return
+	}
+	if int64(len(data)) > 10<<20 {
+		middleware.AbortJSON(c, 400, "validation_error", "фото больше 10 MB")
+		return
+	}
+	cost := 2
+	if d.Hedra != nil && d.Hedra.Enabled() {
+		cost = 3
+	}
+	if err := d.Credits.Spend(uid, cost); err != nil {
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	res, err := d.Portrait.Create(uid, uint(id), data, file.Filename, c.PostForm("prompt"))
+	if err != nil {
+		d.Credits.Refund(uid, cost)
+		middleware.AbortJSON(c, 500, "portrait_failed", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"portrait": res, "balance": d.Credits.Balance(uid)})
 }
 
 func (d *Deps) tts(c *gin.Context) {

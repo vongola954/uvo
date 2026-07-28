@@ -17,6 +17,10 @@ var allowedHostSuffixes = []string{
 	"acedata.cloud",
 	"cdn1.suno.ai",
 	"cdn2.suno.ai",
+	"hedra.com",
+	"together.ai",
+	"klingai.com",
+	"googleapis.com",
 }
 
 func hostAllowed(host string) bool {
