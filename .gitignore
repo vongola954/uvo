@@ -1,0 +1,17 @@
+.env
+env.txt
+*.env
+!.env.example
+data/
+logs/
+*.db
+*.mp3
+*.wav
+venv/
+.venv/
+__pycache__/
+node_modules/
+uvo
+uvo.exe
+*.tar.gz
+.DS_Store

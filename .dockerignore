@@ -1,0 +1,7 @@
+.env
+data
+logs
+*.tar.gz
+.git
+uvo
+uvo.exe

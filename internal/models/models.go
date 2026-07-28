@@ -1,0 +1,138 @@
+package models
+
+import "time"
+
+type User struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"unique;not null;index"`
+	Name      string
+	Plan      string    `gorm:"default:'free'"` // free | pro | premier
+	CreatedAt time.Time
+}
+
+type Track struct {
+	ID             uint      `gorm:"primaryKey"`
+	UserID         string    `gorm:"not null;index"`
+	Title          string    `gorm:"not null"`
+	FilePath       string    `gorm:"not null"`
+	Duration       int
+	Genre          string
+	Key            string
+	BPM            int
+	VoiceProfileID string
+	IsPublic       bool      `gorm:"default:false"`
+	PlayCount      int       `gorm:"default:0"`
+	Prompt         string
+	Lyrics         string
+	Instrumental   bool      `gorm:"default:false"`
+	CreatedAt      time.Time
+}
+
+type VoiceProfile struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"not null;index"`
+	Name      string    `gorm:"not null"`
+	VoiceID   string    `gorm:"not null"`
+	Active    bool      `gorm:"default:true"`
+	CreatedAt time.Time
+}
+
+type Playlist struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"not null;index"`
+	Name      string    `gorm:"not null"`
+	Description string
+	IsPublic  bool      `gorm:"default:false"`
+	Likes     int       `gorm:"default:0"`
+	CreatedAt time.Time
+}
+
+type PlaylistTrack struct {
+	ID         uint `gorm:"primaryKey"`
+	PlaylistID uint `gorm:"not null;index"`
+	TrackID    uint `gorm:"not null;index"`
+	Position   int
+}
+
+type TrackRevision struct {
+	ID        uint      `gorm:"primaryKey"`
+	TrackID   uint      `gorm:"not null;index"`
+	Version   int
+	Changes   string // JSON description of changes
+	FilePath  string
+	Prompt    string
+	Style     string
+	CreatedAt time.Time
+}
+
+type SocialPost struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"not null;index"`
+	TrackID   uint
+	Caption   string
+	Likes     int       `gorm:"default:0"`
+	CreatedAt time.Time
+}
+
+type Like struct {
+	ID     uint   `gorm:"primaryKey"`
+	UserID string `gorm:"not null;index"`
+	PostID uint   `gorm:"not null;index"`
+}
+
+type Comment struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"not null"`
+	PostID    uint      `gorm:"not null;index"`
+	Text      string
+	CreatedAt time.Time
+}
+
+type Subscription struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    string    `gorm:"unique;not null"`
+	Plan      string    // free | pro | premier
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+type License struct {
+	ID        uint      `gorm:"primaryKey"`
+	TrackID   uint      `gorm:"not null"`
+	BuyerID   string
+	Type      string // exclusive | non-exclusive
+	Price     float64
+	CreatedAt time.Time
+}
+
+type Referral struct {
+	ID         uint   `gorm:"primaryKey"`
+	ReferrerID string `gorm:"not null;index"`
+	ReferredID string `gorm:"not null"`
+	Bonus      int
+	CreatedAt  time.Time
+}
+
+
+type CreditBalance struct {
+	ID        uint   `gorm:"primaryKey"`
+	UserID    string `gorm:"unique;not null;index"`
+	Balance   int    `gorm:"default:3"`
+	UpdatedAt time.Time
+}
+
+
+type JobRecord struct {
+	ID        string `gorm:"primaryKey"`
+	UserID    string `gorm:"index"`
+	Status    string `gorm:"index"`
+	Error     string
+	TrackID   uint
+	Title     string
+	PlayURL   string
+	Duration  int
+	RequestID string    `gorm:"index"` // client idempotency id (may be empty)
+	IdemKey   string    `gorm:"uniqueIndex;not null"` // user|requestID or job id
+	CreatedAt time.Time `gorm:"index"`
+	UpdatedAt time.Time
+}

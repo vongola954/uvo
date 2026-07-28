@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UVO — Плейлисты</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/auth.js"></script>
+<style>body{background:#050507;color:#f4f4f5;font-family:system-ui}</style>
+</head><body class="p-6 max-w-2xl mx-auto">
+<a href="/" class="text-emerald-400 text-sm">← Студия</a>
+<h1 class="text-2xl font-bold mt-4 mb-6">Плейлисты</h1>
+<div id="auth"></div>
+<form id="f" class="flex gap-2 mb-6">
+  <input id="name" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2" placeholder="Название">
+  <button class="bg-emerald-600 px-4 py-2 rounded-xl font-semibold">Создать</button>
+</form>
+<div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
+<script>
+UVO.mountAuthBar(document.getElementById('auth'));
+async function load(){
+  const el=document.getElementById('list');
+  try {
+    await UVO.ensureDevToken();
+    const res = await UVO.api('/api/playlists');
+    const d = await res.json();
+    if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+    const list = d.playlists || [];
+    el.textContent = '';
+    if (!list.length) { el.textContent = 'Нет плейлистов.'; return; }
+    list.forEach(p => {
+      el.appendChild(UVO.el('div', {
+        className: 'border border-white/10 rounded-xl p-4',
+        text: p.Name || p.name || 'Плейлист',
+      }));
+    });
+  } catch (e) {
+    el.textContent = e.message;
+  }
+}
+load();
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  await UVO.ensureDevToken();
+  await UVO.api('/api/playlists', {
+    method: 'POST',
+    body: JSON.stringify({ name: document.getElementById('name').value }),
+  });
+  load();
+};
+</script>
+</body></html>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>UVO — AI-музыка 2026</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050507;
+      --surface: rgba(18, 18, 22, 0.72);
+      --border: rgba(255,255,255,0.08);
+      --accent: #34d399;
+      --accent-dim: rgba(52, 211, 153, 0.15);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+    }
+    * { font-family: 'Inter', system-ui, sans-serif; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    /* Dark mode 2.0 — true black + ambient glow */
+    .mesh {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 40% at 20% -10%, rgba(52,211,153,0.18), transparent 50%),
+        radial-gradient(ellipse 50% 30% at 90% 10%, rgba(59,130,246,0.12), transparent 45%),
+        radial-gradient(ellipse 40% 40% at 50% 100%, rgba(168,85,247,0.08), transparent 50%);
+    }
+    .noise {
+      position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    .wrap { position: relative; z-index: 2; }
+
+    /* Glassmorphism 2026 */
+    .glass {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      border-radius: 20px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 24px 48px -24px rgba(0,0,0,0.5);
+    }
+
+    .serif { font-family: 'Instrument Serif', Georgia, serif; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981, #059669 50%, #0d9488);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.1) inset, 0 8px 32px rgba(16,185,129,0.35);
+      transition: transform .2s ease, box-shadow .2s ease, filter .2s;
+    }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset, 0 12px 40px rgba(16,185,129,0.45);
+      filter: brightness(1.08);
+    }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-ghost {
+      border: 1px solid var(--border);
+      transition: border-color .2s, color .2s, background .2s;
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    input, textarea, select {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      width: 100%;
+      color: var(--text);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: rgba(52,211,153,0.5);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .progress-bar {
+      height: 6px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden;
+    }
+    .progress-bar > div {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #10b981, #6ee7b7, #34d399);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s linear infinite;
+      border-radius: 99px;
+      transition: width .4s ease;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff;
+      border-radius: 50%; animation: spin .65s linear infinite;
+      vertical-align: middle; margin-right: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Bento cards micro-interaction */
+    .bento {
+      transition: transform .25s ease, border-color .25s;
+    }
+    .bento:hover {
+      transform: translateY(-4px);
+      border-color: rgba(52,211,153,0.25);
+    }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px;
+      background: var(--accent-dim); border: 1px solid rgba(52,211,153,0.25);
+      color: var(--accent); font-size: 12px; font-weight: 600;
+    }
+    .pulse-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+      animation: pulse 1.8s ease infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    nav {
+      backdrop-filter: blur(16px);
+      background: rgba(5,5,7,0.75);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Soft spatial depth for result player */
+    .player-card {
+      background: linear-gradient(145deg, rgba(24,24,27,0.9), rgba(10,10,12,0.95));
+      border: 1px solid rgba(52,211,153,0.2);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, .progress-bar > div, .spinner, .bento { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mesh"></div>
+  <div class="noise"></div>
+
+  <div class="wrap">
+    <nav class="fixed top-0 inset-x-0 z-50">
+      <div class="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
+        <a href="/" class="text-xl font-black tracking-tight">UVO<span style="color:var(--accent)">.</span></a>
+        <div class="hidden sm:flex gap-6 text-sm text-zinc-400">
+          <a href="#generate" class="hover:text-white transition">Студия</a>
+          <a href="/tracks.html" class="hover:text-white transition">Треки</a>
+          <a href="/feed.html" class="hover:text-white transition">Лента</a>
+          <a href="/playlists.html" class="hover:text-white transition">Плейлисты</a>
+          <a href="#pricing" class="hover:text-white transition">Тарифы</a>
+        </div>
+        <a href="#generate" class="btn-primary text-sm font-semibold px-4 py-2 rounded-full">Создать</a>
+      </div>
+    </nav>
+
+    <!-- Hero: kinetic + serif accent (editorial 2026) -->
+    <section class="pt-28 pb-16 px-5">
+      <div class="max-w-3xl mx-auto text-center">
+        <div class="chip mb-6">
+          <span class="pulse-dot"></span>
+          Suno v5.5 · AceData · пополните баланс при 503
+        </div>
+        <h1 class="text-4xl sm:text-6xl font-black leading-[1.08] tracking-tight mb-5">
+          Музыка, которую<br>
+          <span class="serif italic font-normal text-5xl sm:text-7xl" style="color:var(--accent)">ты задумал</span>
+        </h1>
+        <p class="text-lg text-zinc-400 max-w-lg mx-auto mb-10 leading-relaxed">
+          Промпт → трек с вокалом. Клон голоса, лента, плейлисты —
+          веб-студия сильнее обычного Telegram-бота.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          <a href="#generate" class="btn-primary px-8 py-3.5 rounded-full font-bold">Открыть студию</a>
+          <a href="#features" class="btn-ghost px-8 py-3.5 rounded-full font-medium text-zinc-300">Как это работает</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Studio glass panel -->
+    <section id="generate" class="px-5 pb-20">
+      <div class="max-w-2xl mx-auto glass p-7 sm:p-9">
+        <div class="flex items-end justify-between mb-6">
+          <div>
+            <h2 class="text-xl font-bold">Студия</h2>
+            <p class="text-sm text-zinc-500 mt-1">AI-копилот · не автопилот</p>
+          </div>
+          <span id="credits-chip" class="text-xs text-zinc-500"></span>
+        </div>
+
+        <form id="gen-form" class="space-y-4">
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Промпт</label>
+            <textarea id="prompt" rows="3" required placeholder="ночной synth-pop, женский вокал, город после дождя"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стиль</label>
+              <select id="style"><option value="">Авто</option></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Длина</label>
+              <select id="duration">
+                <option value="60">1 мин</option>
+                <option value="180" selected>3 мин</option>
+                <option value="300">5 мин</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стихи</label>
+            <textarea id="lyrics" rows="2" placeholder="Опционально"></textarea>
+          </div>
+          <label class="flex items-center gap-3 text-sm text-zinc-400 cursor-pointer select-none">
+            <input type="checkbox" id="instrumental" class="w-4 h-4 accent-emerald-500 rounded">
+            Только инструментал
+          </label>
+          <button type="submit" id="btn-gen" class="btn-primary w-full py-4 rounded-2xl font-bold tracking-wide">
+            GENERATE
+          </button>
+        </form>
+
+        <div id="status-wrap" class="mt-6 hidden">
+          <div class="flex justify-between text-xs text-zinc-400 mb-2">
+            <span id="status-text">Генерация...</span>
+            <span id="status-pct" class="font-mono text-emerald-400">0%</span>
+          </div>
+          <div class="progress-bar mb-3"><div id="progress"></div></div>
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-zinc-600">
+            <span id="step-1">Промпт</span>
+            <span id="step-2">Очередь</span>
+            <span id="step-3">Suno</span>
+            <span id="step-4">Готово</span>
+          </div>
+        </div>
+
+        <div id="result" class="mt-6 hidden">
+          <div class="player-card rounded-2xl p-5">
+            <p id="track-title" class="font-semibold text-emerald-400 mb-3 text-sm"></p>
+            <audio id="player" controls class="w-full"></audio>
+            <div class="flex gap-2 mt-4">
+              <a id="dl-link" href="#" download class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать</a>
+              <button type="button" id="btn-close-result" class="btn-ghost text-xs px-4 py-2 rounded-xl">Закрыть</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bento features -->
+    <section id="features" class="px-5 pb-20">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="text-2xl sm:text-3xl font-bold text-center mb-2">Всё в одной студии</h2>
+        <p class="text-zinc-500 text-center text-sm mb-10">Минимализм с характером · glass · bento</p>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div class="glass bento p-5 lg:col-span-2">
+            <div class="text-2xl mb-3">🎵</div>
+            <h3 class="font-semibold mb-1">Генерация Suno</h3>
+            <p class="text-sm text-zinc-500 leading-relaxed">Промпт или свои стихи → полноценный трек. Async jobs, без зависания UI.</p>
+          </div>
+          <div class="glass bento p-5">
+            <div class="text-2xl mb-3">🎤</div>
+            <h3 class="font-semibold mb-1">Клон голоса</h3>
+            <p class="text-sm text-zinc-500">SiliconFlow / ElevenLabs, дедуп и квоты.</p>
+          </div>
+          <div class="glass bento p-5">
+            <div class="text-2xl mb-3">✏️</div>
+            <h3 class="font-semibold mb-1">Правки</h3>
+            <p class="text-sm text-zinc-500">Стиль, текст, ревизии трека.</p>
+          </div>
+          <div class="glass bento p-5">
+            <div class="text-2xl mb-3">📂</div>
+            <h3 class="font-semibold mb-1">Плейлисты</h3>
+            <p class="text-sm text-zinc-500">Свои коллекции и публичные.</p>
+          </div>
+          <div class="glass bento p-5">
+            <div class="text-2xl mb-3">🌐</div>
+            <h3 class="font-semibold mb-1">Лента</h3>
+            <p class="text-sm text-zinc-500">Посты только со своими треками.</p>
+          </div>
+          <div class="glass bento p-5 lg:col-span-2">
+            <div class="text-2xl mb-3">💎</div>
+            <h3 class="font-semibold mb-1">Кредиты как у ботов, платформа сильнее</h3>
+            <p class="text-sm text-zinc-500">Пакеты генераций + веб + MAX — не только чат.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" class="px-5 pb-20">
+      <div class="max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold text-center mb-8">Тарифы</h2>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div class="glass p-6 text-center">
+            <p class="text-xs text-zinc-500 mb-1">Free</p>
+            <p class="text-3xl font-black mb-4">0 ₽</p>
+            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
+              <li>✓ 3 кредита старт</li>
+              <li>✓ Базовые стили</li>
+              <li>✓ MP3</li>
+            </ul>
+            <a href="#generate" class="btn-ghost block w-full py-2.5 rounded-xl text-sm">Начать</a>
+          </div>
+          <div class="glass p-6 text-center relative" style="border-color:rgba(52,211,153,0.35)">
+            <span class="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-bold px-2.5 py-0.5 rounded-full">TOP</span>
+            <p class="text-xs text-emerald-400 mb-1">Pro</p>
+            <p class="text-3xl font-black mb-4">299 ₽</p>
+            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
+              <li>✓ Пакеты кредитов</li>
+              <li>✓ Клон голоса</li>
+              <li>✓ Правки</li>
+            </ul>
+            <a href="#generate" class="btn-primary block w-full py-2.5 rounded-xl text-sm font-bold">Выбрать</a>
+          </div>
+          <div class="glass p-6 text-center">
+            <p class="text-xs text-zinc-500 mb-1">Premier</p>
+            <p class="text-3xl font-black mb-4">799 ₽</p>
+            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
+              <li>✓ Больше лимитов</li>
+              <li>✓ Лицензии</li>
+              <li>✓ API</li>
+            </ul>
+            <a href="#generate" class="btn-ghost block w-full py-2.5 rounded-xl text-sm">Выбрать</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="border-t border-white/5 py-10 px-5 text-center text-xs text-zinc-600">
+      UVO · dark mode 2.0 · glass · bento · 2026
+    </footer>
+  </div>
+
+  <script src="/static/auth.js"></script>
+  <script>
+    UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
+
+    (async () => {
+      await UVO.ensureDevToken();
+      try {
+        const r = await UVO.api('/api/styles');
+        const d = await r.json();
+        const sel = document.getElementById('style');
+        (d.styles || []).forEach(s => {
+          const o = document.createElement('option');
+          o.value = s; o.textContent = s;
+          sel.appendChild(o);
+        });
+      } catch (_) {}
+      try {
+        const r = await UVO.api('/api/credits');
+        const d = await r.json();
+        const el = document.getElementById('credits-chip');
+        if (el && r.ok) el.textContent = 'кредиты: ' + d.balance;
+      } catch (_) {}
+    })();
+
+    function setStep(n) {
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById('step-' + i);
+        if (el) el.className = i <= n ? 'text-emerald-500' : 'text-zinc-600';
+      }
+    }
+    function animateProgress() {
+      const bar = document.getElementById('progress');
+      const pct = document.getElementById('status-pct');
+      const status = document.getElementById('status-text');
+      let v = 0;
+      setStep(1);
+      const t = setInterval(() => {
+        v = Math.min(92, v + Math.random() * 7);
+        bar.style.width = v + '%';
+        pct.textContent = Math.floor(v) + '%';
+        if (v > 15 && v <= 35) { setStep(2); status.textContent = 'В очереди...'; }
+        else if (v > 35) { setStep(3); status.textContent = 'Suno пишет трек...'; }
+      }, 700);
+      return () => {
+        clearInterval(t);
+        bar.style.width = '100%';
+        pct.textContent = '100%';
+        setStep(4);
+        status.textContent = 'Готово!';
+      };
+    }
+
+    document.getElementById('btn-close-result')?.addEventListener('click', () => {
+      document.getElementById('result').classList.add('hidden');
+    });
+
+    document.getElementById('gen-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const wrap = document.getElementById('status-wrap');
+      const result = document.getElementById('result');
+      const btn = document.getElementById('btn-gen');
+      wrap.classList.remove('hidden');
+      result.classList.add('hidden');
+      btn.disabled = true;
+      btn.classList.add('opacity-80');
+      btn.innerHTML = '<span class="spinner"></span>Генерация...';
+      const stopProgress = animateProgress();
+
+      const body = {
+        prompt: document.getElementById('prompt').value,
+        style: document.getElementById('style').value,
+        lyrics: document.getElementById('lyrics').value,
+        duration: parseInt(document.getElementById('duration').value) || 180,
+        instrumental: document.getElementById('instrumental').checked
+      };
+
+      try {
+        await UVO.ensureDevToken();
+        const res = await UVO.api('/api/generate', {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok && res.status !== 202) {
+          const msg = (data.error && data.error.message) || data.error || 'Ошибка';
+          throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        }
+        if (data.job_id) {
+          let done = false;
+          while (!done) {
+            await new Promise(r => setTimeout(r, 2500));
+            const jobRes = await UVO.api('/api/jobs/' + data.job_id);
+            const job = await jobRes.json();
+            if (job.status === 'done') {
+              stopProgress();
+              document.getElementById('player').src = job.play_url;
+              document.getElementById('track-title').textContent = (job.title || 'Трек') + ' · ' + (job.duration || '?') + 's';
+              document.getElementById('dl-link').href = job.play_url;
+              result.classList.remove('hidden');
+              done = true;
+            } else if (job.status === 'failed') {
+              throw new Error(job.error || 'fail');
+            }
+          }
+        } else {
+          stopProgress();
+          document.getElementById('player').src = data.play_url;
+          document.getElementById('track-title').textContent = (data.title || 'Трек') + ' · ' + (data.duration || '?') + 's';
+          document.getElementById('dl-link').href = data.play_url;
+          result.classList.remove('hidden');
+        }
+        try {
+          const cr = await UVO.api('/api/credits');
+          const d = await cr.json();
+          const el = document.getElementById('credits-chip');
+          if (el && cr.ok) el.textContent = 'кредиты: ' + d.balance;
+        } catch (_) {}
+      } catch (err) {
+        stopProgress();
+        document.getElementById('status-text').textContent = 'Ошибка: ' + err.message;
+        document.getElementById('progress').style.width = '0%';
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-80');
+        btn.innerHTML = 'GENERATE';
+      }
+    });
+  </script>
+</body>
+</html>
