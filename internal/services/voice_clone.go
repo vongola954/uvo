@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,6 +26,7 @@ type VoiceCloneService struct {
 	mediaRoot string
 	publicURL string
 	limitDay  int
+	quotaMu   sync.Mutex
 }
 
 func NewVoiceCloneService(
@@ -142,20 +144,32 @@ func (s *VoiceCloneService) findExisting(userID, name string) (*models.VoiceProf
 	return nil, nil
 }
 
-func (s *VoiceCloneService) checkQuota(userID string) error {
+func (s *VoiceCloneService) reserveQuota(userID string) error {
+	s.quotaMu.Lock()
+	defer s.quotaMu.Unlock()
 	dayAgo := time.Now().Add(-24 * time.Hour)
 	var n int64
-	_ = s.db.Model(&models.VoiceCloneEvent{}).
+	if err := s.db.Model(&models.VoiceCloneEvent{}).
 		Where("user_id = ? AND created_at > ?", userID, dayAgo).
-		Count(&n).Error
+		Count(&n).Error; err != nil {
+		return err
+	}
 	if int(n) >= s.limitDay {
 		return fmt.Errorf("квота клонирования: максимум %d / сутки", s.limitDay)
 	}
-	return nil
+	return s.db.Create(&models.VoiceCloneEvent{UserID: userID, CreatedAt: time.Now()}).Error
 }
 
-func (s *VoiceCloneService) recordClone(userID string) {
-	_ = s.db.Create(&models.VoiceCloneEvent{UserID: userID, CreatedAt: time.Now()}).Error
+func (s *VoiceCloneService) releaseQuota(userID string) {
+	s.quotaMu.Lock()
+	defer s.quotaMu.Unlock()
+	dayAgo := time.Now().Add(-24 * time.Hour)
+	var ev models.VoiceCloneEvent
+	err := s.db.Where("user_id = ? AND created_at > ?", userID, dayAgo).
+		Order("created_at DESC").First(&ev).Error
+	if err == nil {
+		_ = s.db.Delete(&ev).Error
+	}
 }
 
 func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*models.VoiceProfile, error) {
@@ -176,7 +190,10 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	if len(audioData) < 1000 {
 		return nil, fmt.Errorf("audio too short, need 10–30 seconds")
 	}
-	if err := s.checkQuota(userID); err != nil {
+	if !LooksLikeAudio(audioData) {
+		return nil, fmt.Errorf("файл не похож на аудио (нужен mp3/wav/m4a/ogg)")
+	}
+	if err := s.reserveQuota(userID); err != nil {
 		return nil, err
 	}
 
@@ -187,12 +204,12 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	for _, provider := range order {
 		id, err := s.cloneWith(provider, audioData, name)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", provider, err))
+			errs = append(errs, provider)
 			logrus.WithError(err).WithField("provider", provider).Warn("voice clone attempt failed")
 			continue
 		}
 		if id == "" {
-			errs = append(errs, provider+": empty voice_id")
+			errs = append(errs, provider)
 			continue
 		}
 		voiceID = id
@@ -201,13 +218,16 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 	}
 
 	if voiceID == "" {
+		s.releaseQuota(userID)
 		if len(errs) == 0 {
-			return nil, fmt.Errorf("no voice provider configured")
+			return nil, &clients.ProviderError{
+				Code: "voice_provider_missing", Message: "Провайдер клонирования не настроен", Status: 503,
+			}
 		}
-		return nil, fmt.Errorf("all providers failed: %s", strings.Join(errs, "; "))
+		return nil, &clients.ProviderError{
+			Code: "voice_clone_failed", Message: "Не удалось клонировать голос. Попробуйте другой файл или позже.", Status: 502,
+		}
 	}
-
-	s.recordClone(userID)
 
 	profile := &models.VoiceProfile{
 		UserID:   userID,
@@ -217,6 +237,7 @@ func (s *VoiceCloneService) Clone(userID, name string, audioData []byte) (*model
 		Active:   true,
 	}
 	if err := s.voiceRepo.Create(profile); err != nil {
+		s.releaseQuota(userID)
 		return nil, err
 	}
 	logrus.WithFields(logrus.Fields{

@@ -80,7 +80,7 @@ func main() {
 		Tracks: trackRepo, Voice: voiceSvc, Cover: coverSvc, Karaoke: karaokeSvc, Portrait: portraitSvc,
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.6.2",
+		MaxOn: maxC.Enabled(), Version: "2.6.3",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -91,9 +91,10 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	r.MaxMultipartMemory = 32 << 20
 	r.Use(middleware.RecoveryJSON(), gin.Logger(), middleware.Metrics(), middleware.OptionalAuth(cfg.JWTSecret), middleware.CSRF())
 	webapi.Register(r, deps)
 
-	logrus.Infof("UVO 2.6.1 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
+	logrus.Infof("UVO 2.6.3 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

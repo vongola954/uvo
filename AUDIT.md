@@ -1,9 +1,9 @@
-# Аудит UVO 2.6.2 — 2026-07-29
+# Аудит UVO 2.6.3 — 2026-07-29
 
-Жёсткий аудит после prod-hardening (2.6.1) + эпоха 12 (SSRF + idem). Предыдущий (2.4.0 ≈ 5.5/10): см. ниже «Закрыто».
+Жёсткий аудит после prod-hardening + эпох 12–13. Предыдущий (2.4.0 ≈ 5.5/10): см. ниже «Закрыто».
 
 **Метод:** обзор auth/CSRF/ownership/SSRF/credits/webhook/upload/Docker/karaoke/portrait + live `/health`.  
-**Код:** `2.6.2` (эпоха 12: CheckRedirect + claim→spend).
+**Код:** `2.6.3` (эпоха 12: SSRF+idem; эпоха 13: cost controls, sanitize, non-root).
 
 ---
 
@@ -16,7 +16,7 @@
 | Надёжность | 6.5 | **6.5** | Atomic spend; idem↔credits race |
 | Тесты | 6 | **6.5** | CI; нет redirect / race / media authz |
 | Prod-ready | 5 | **7.0** | Guards + JWT + `/login`; root Docker |
-| Cost control | 5 | **5.5** | Gen/cover/karaoke берут кредиты; TTS/clone — нет |
+| Cost control | 5 | **7.0** | TTS/clone/karaoke/portrait + RL |
 
 **Итог: 6.8/10** — shipable MVP на Amvera при включённых guards.  
 До ~8.5: SSRF harden, claim→spend, cost controls, non-root, session cookie.  
@@ -62,11 +62,11 @@ Live подтверждено: `prod_guards:true`, флаги off, `web_public_u
 |----|---------|-----|------------|
 | ~~H1~~ | ~~SSRF через redirects~~ | **CLOSED 2.6.2** | `CheckRedirect` + dial reject private; тесты 302→link-local |
 | ~~H2~~ | ~~Spend до exclusive job claim~~ | **CLOSED 2.6.2** | `CreateOrClaim` → Spend; `ClaimProcessing` CAS; Refund на lost claim |
-| **H3** | TTS без кредитов / RL | `routes.go` `tts` | `Spend(1)` + `Limiter.Allow` (или daily cap) |
-| **H4** | Voice clone soft quota TOCTOU | `voice_clone.go` | Atomic quota row; credits; magic-byte sniff (MIME no-op сейчас) |
-| **H5** | Karaoke/portrait без gen RL | `routes.go` | `Limiter.Allow` на Hedra/Kling-пути |
-| **H6** | Provider body клиенту | `err.Error()`, Hedra | Только `ProviderError` + `redactBody` |
-| **H7** | Docker root | `Dockerfile` | `USER` non-root + `chown /data` |
+| ~~H3~~ | ~~TTS без кредитов / RL~~ | **CLOSED 2.6.3** | Spend(1) + Limiter |
+| ~~H4~~ | ~~Voice clone soft quota TOCTOU~~ | **CLOSED 2.6.3** | reserveQuota atomic + Spend(2) + magic bytes |
+| ~~H5~~ | ~~Karaoke/portrait без gen RL~~ | **CLOSED 2.6.3** | Limiter на karaoke/portrait/edit |
+| ~~H6~~ | ~~Provider body клиенту~~ | **CLOSED 2.6.3** | writeProviderErr без raw err.Error() |
+| ~~H7~~ | ~~Docker root~~ | **CLOSED 2.6.3** | USER uvo (uid 10001) |
 | **H8** | Webhook `?secret=` | `webhook.go` | Только header; убрать query |
 
 ---
@@ -125,9 +125,9 @@ Live подтверждено: `prod_guards:true`, флаги off, `web_public_u
 | Fail-closed boot | **OK** (2.6.1) |
 | WEB_PUBLIC_URL | **OK** |
 | MAX studio login | **OK** (`/login`) |
-| Docker non-root | **FAIL** |
+| Docker non-root | **OK** (2.6.3) |
 | SSRF redirects | **OK** (2.6.2) |
-| TTS / clone cost | **FAIL** |
+| TTS / clone cost | **OK** (2.6.3) |
 | Idem claim→spend | **OK** (2.6.2) |
 | ЮKassa | нет |
 | DB password rotated | владелец подтвердил |

@@ -48,7 +48,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.6.2"
+		d.Version = "2.6.3"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -515,17 +515,18 @@ func (d *Deps) editTrack(c *gin.Context) {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, 1)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
 	track, err := d.Edit.Edit(&services.EditRequest{
 		UserID: uid, TrackID: uint(id), Style: req.Style, Lyrics: req.Lyrics,
 		Prompt: req.Prompt, Instrumental: req.Instrumental,
 	})
 	if err != nil {
 		d.Credits.Refund(uid, 1)
-		if pe := clients.AsProviderError(err); pe != nil {
-			c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
-			return
-		}
-		c.JSON(500, gin.H{"error": gin.H{"code": "generation_failed", "message": err.Error()}})
+		writeProviderErr(c, err)
 		return
 	}
 	c.JSON(200, gin.H{"track": track, "play_url": fmt.Sprintf("/tracks/%d/play", track.ID)})
@@ -558,13 +559,18 @@ func (d *Deps) deleteTrack(c *gin.Context) {
 		middleware.AbortJSON(c, 403, "forbidden", "forbidden")
 		return
 	}
-	_ = os.Remove(track.FilePath)
+	if track.FilePath != "" && d.Cfg != nil {
+		if safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, track.FilePath); err == nil {
+			_ = os.Remove(safe)
+		}
+	}
 	_ = d.DB.Delete(track).Error
 	c.JSON(200, gin.H{"ok": true})
 }
 
 func (d *Deps) voiceClone(c *gin.Context) {
 	uid := middleware.UserID(c)
+	const cloneCost = 2
 	file, err := c.FormFile("audio")
 	if err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", "audio file required (multipart field: audio)")
@@ -572,7 +578,7 @@ func (d *Deps) voiceClone(c *gin.Context) {
 	}
 	f, err := file.Open()
 	if err != nil {
-		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		middleware.AbortJSON(c, 400, "validation_error", "не удалось открыть файл")
 		return
 	}
 	defer f.Close()
@@ -595,12 +601,30 @@ func (d *Deps) voiceClone(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
-	profile, err := d.Voice.Clone(uid, name, data)
-	if err != nil {
-		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+	if !services.LooksLikeAudio(data) {
+		middleware.AbortJSON(c, 400, "validation_error", "файл не похож на аудио (нужен mp3/wav/m4a/ogg)")
 		return
 	}
-	c.JSON(200, gin.H{"voice": profile})
+	if err := d.Credits.Spend(uid, cloneCost); err != nil {
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, cloneCost)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
+	profile, err := d.Voice.Clone(uid, name, data)
+	if err != nil {
+		d.Credits.Refund(uid, cloneCost)
+		if strings.Contains(err.Error(), "квота") {
+			middleware.AbortJSON(c, 429, "quota_exceeded", err.Error())
+			return
+		}
+		writeProviderErr(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"voice": profile, "balance": d.Credits.Balance(uid), "cost": cloneCost})
 }
 
 func (d *Deps) coverUpload(c *gin.Context) {
@@ -656,11 +680,7 @@ func (d *Deps) coverUpload(c *gin.Context) {
 	})
 	if err != nil {
 		d.Credits.Refund(uid, 2)
-		if pe := clients.AsProviderError(err); pe != nil {
-			c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
-			return
-		}
-		middleware.AbortJSON(c, 500, "cover_failed", err.Error())
+		writeProviderErr(c, err)
 		return
 	}
 	c.JSON(200, gin.H{
@@ -696,14 +716,15 @@ func (d *Deps) makeKaraoke(c *gin.Context) {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, 2)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
 	res, err := d.Karaoke.Build(uid, uint(id))
 	if err != nil {
 		d.Credits.Refund(uid, 2)
-		if pe := clients.AsProviderError(err); pe != nil {
-			c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
-			return
-		}
-		middleware.AbortJSON(c, 500, "karaoke_failed", err.Error())
+		writeProviderErr(c, err)
 		return
 	}
 	c.JSON(200, gin.H{"karaoke": res, "balance": d.Credits.Balance(uid), "player_url": fmt.Sprintf("/karaoke.html?id=%d", id)})
@@ -744,10 +765,15 @@ func (d *Deps) makePortrait(c *gin.Context) {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, cost)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
 	res, err := d.Portrait.Create(uid, uint(id), data, file.Filename, c.PostForm("prompt"))
 	if err != nil {
 		d.Credits.Refund(uid, cost)
-		middleware.AbortJSON(c, 500, "portrait_failed", err.Error())
+		writeProviderErr(c, err)
 		return
 	}
 	c.JSON(200, gin.H{"portrait": res, "balance": d.Credits.Balance(uid)})
@@ -760,7 +786,7 @@ func (d *Deps) tts(c *gin.Context) {
 		Text    string `json:"text" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		middleware.AbortJSON(c, 400, "validation_error", "voice_id и text обязательны")
 		return
 	}
 	if err := services.ValidateTTS(req.VoiceID, req.Text); err != nil {
@@ -771,11 +797,23 @@ func (d *Deps) tts(c *gin.Context) {
 		middleware.AbortJSON(c, 403, "forbidden", "voice_id does not belong to you")
 		return
 	}
-	audio, err := d.Voice.TTS(req.VoiceID, req.Text)
-	if err != nil {
-		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+	const ttsCost = 1
+	if err := d.Credits.Spend(uid, ttsCost); err != nil {
+		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, ttsCost)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
+	audio, err := d.Voice.TTS(req.VoiceID, req.Text)
+	if err != nil {
+		d.Credits.Refund(uid, ttsCost)
+		writeProviderErr(c, err)
+		return
+	}
+	c.Header("X-Credits-Balance", strconv.Itoa(d.Credits.Balance(uid)))
 	c.Data(200, "audio/mpeg", audio)
 }
 
@@ -786,7 +824,7 @@ func (d *Deps) elevenVoices(c *gin.Context) {
 	}
 	list, err := d.Eleven.ListVoices()
 	if err != nil {
-		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+		writeProviderErr(c, err)
 		return
 	}
 	c.JSON(200, gin.H{"voices": list})

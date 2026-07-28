@@ -43,15 +43,30 @@ func ValidateVoiceUpload(name string, size int64, contentType string) error {
 	if size > 15*1024*1024 {
 		return fmt.Errorf("файл больше 15 MB")
 	}
-	ct := strings.ToLower(contentType)
-	if ct != "" && !strings.Contains(ct, "audio") && !strings.Contains(ct, "octet-stream") &&
-		!strings.HasSuffix(strings.ToLower(name), ".mp3") &&
-		!strings.HasSuffix(strings.ToLower(name), ".wav") &&
-		!strings.HasSuffix(strings.ToLower(name), ".m4a") &&
-		!strings.HasSuffix(strings.ToLower(name), ".ogg") {
-		// content-type often wrong from browsers; size checks are primary
-	}
 	return nil
+}
+
+// LooksLikeAudio checks magic bytes (MP3/ID3, WAV, M4A, Ogg).
+func LooksLikeAudio(data []byte) bool {
+	if len(data) < 12 {
+		return false
+	}
+	if string(data[0:3]) == "ID3" {
+		return true
+	}
+	if data[0] == 0xff && data[1]&0xe0 == 0xe0 {
+		return true
+	}
+	if string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE" {
+		return true
+	}
+	if string(data[4:8]) == "ftyp" {
+		return true
+	}
+	if string(data[0:4]) == "OggS" {
+		return true
+	}
+	return false
 }
 
 func ValidateTTS(voiceID, text string) error {

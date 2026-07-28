@@ -171,7 +171,7 @@ func (b *Bot) HandleText(userID, text string, chatID int64) {
 					if b.credits != nil {
 						b.credits.Refund(userID, 1)
 					}
-					msg := err.Error()
+					msg := "Операция не удалась. Попробуйте позже."
 					if pe := clients.AsProviderError(err); pe != nil {
 						msg = pe.Message
 					}

@@ -121,10 +121,7 @@ func (d *Deps) Generate(c *gin.Context) {
 		track, err := d.Gen.Generate(genReq)
 		if err != nil {
 			d.Credits.Refund(userID, 1)
-			msg := err.Error()
-			if pe := clients.AsProviderError(err); pe != nil {
-				msg = pe.Message
-			}
+			msg := safeErrMessage(err)
 			middleware.IncGenFail()
 			d.Jobs.Update(jobID, func(j *models.JobRecord) {
 				j.Status = string(services.JobFailed)
@@ -164,5 +161,12 @@ func writeProviderErr(c *gin.Context, err error) {
 		c.JSON(pe.Status, gin.H{"error": gin.H{"code": pe.Code, "message": pe.Message}})
 		return
 	}
-	c.JSON(500, gin.H{"error": gin.H{"code": "generation_failed", "message": err.Error()}})
+	c.JSON(500, gin.H{"error": gin.H{"code": "provider_error", "message": "Операция не удалась. Попробуйте позже."}})
+}
+
+func safeErrMessage(err error) string {
+	if pe := clients.AsProviderError(err); pe != nil {
+		return pe.Message
+	}
+	return "Операция не удалась. Попробуйте позже."
 }
