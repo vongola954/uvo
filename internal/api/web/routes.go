@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -40,7 +41,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.2.0"
+		d.Version = "2.3.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -70,6 +71,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.POST("/api/auth/token", d.authToken)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
+	r.GET("/api/discover", d.discover)
 
 	api := r.Group("/api")
 	api.Use(middleware.RequireAuth())
@@ -77,12 +79,18 @@ func Register(r *gin.Engine, d *Deps) {
 		api.POST("/generate", d.Generate)
 		api.GET("/jobs/:id", d.GetJob)
 		api.GET("/tracks", d.listTracks)
+		api.PATCH("/tracks/:id/visibility", d.setTrackVisibility)
 		api.GET("/styles", func(c *gin.Context) { c.JSON(200, gin.H{"styles": services.StyleLibrary}) })
 		api.GET("/voices", d.listVoices)
 		api.GET("/feed", d.getFeed)
 		api.POST("/feed", d.postFeed)
+		api.POST("/feed/:id/like", d.likePost)
+		api.DELETE("/feed/:id/like", d.unlikePost)
+		api.GET("/feed/:id/comments", d.listComments)
+		api.POST("/feed/:id/comments", d.addComment)
 		api.POST("/playlists", d.createPlaylist)
 		api.GET("/playlists", d.listPlaylists)
+		api.PATCH("/playlists/:id/visibility", d.setPlaylistVisibility)
 		api.POST("/playlists/:id/tracks", d.addPlaylistTrack)
 		api.GET("/playlists/:id/tracks", d.getPlaylistTracks)
 		api.POST("/bot/simulate", d.botSimulate)
@@ -171,6 +179,36 @@ func (d *Deps) listTracks(c *gin.Context) {
 	c.JSON(200, gin.H{"tracks": tracks})
 }
 
+func (d *Deps) discover(c *gin.Context) {
+	tracks, err := d.Tracks.ListPublic(30)
+	if err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"tracks": tracks})
+}
+
+func (d *Deps) setTrackVisibility(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		IsPublic bool `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	track, err := d.Tracks.SetPublic(uint(id), middleware.UserID(c), req.IsPublic)
+	if err != nil {
+		if errors.Is(err, repository.ErrForbidden) {
+			middleware.AbortJSON(c, 403, "forbidden", "not your track")
+			return
+		}
+		middleware.AbortJSON(c, 404, "not_found", "not found")
+		return
+	}
+	c.JSON(200, gin.H{"track": track})
+}
+
 func (d *Deps) listVoices(c *gin.Context) {
 	uid := middleware.UserID(c)
 	list, _ := d.Voice.List(uid)
@@ -199,18 +237,87 @@ func (d *Deps) postFeed(c *gin.Context) {
 	c.JSON(200, gin.H{"post": post})
 }
 
-func (d *Deps) createPlaylist(c *gin.Context) {
+func (d *Deps) likePost(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	post, err := d.Social.Like(middleware.UserID(c), uint(id))
+	if err != nil {
+		middleware.AbortJSON(c, 404, "not_found", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"post": post})
+}
+
+func (d *Deps) unlikePost(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	post, err := d.Social.Unlike(middleware.UserID(c), uint(id))
+	if err != nil {
+		middleware.AbortJSON(c, 404, "not_found", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"post": post})
+}
+
+func (d *Deps) listComments(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	list, err := d.Social.Comments(uint(id), 50)
+	if err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"comments": list})
+}
+
+func (d *Deps) addComment(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Name string `json:"name" binding:"required"`
-		Desc string `json:"description"`
+		Text string `json:"text" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
-	p, err := d.Playlists.Create(middleware.UserID(c), req.Name, req.Desc)
+	cm, err := d.Social.AddComment(middleware.UserID(c), uint(id), req.Text)
+	if err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"comment": cm})
+}
+
+func (d *Deps) createPlaylist(c *gin.Context) {
+	var req struct {
+		Name     string `json:"name" binding:"required"`
+		Desc     string `json:"description"`
+		IsPublic bool   `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	p, err := d.Playlists.Create(middleware.UserID(c), req.Name, req.Desc, req.IsPublic)
 	if err != nil {
 		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"playlist": p})
+}
+
+func (d *Deps) setPlaylistVisibility(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		IsPublic bool `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		return
+	}
+	p, err := d.Playlists.SetPublic(middleware.UserID(c), uint(id), req.IsPublic)
+	if err != nil {
+		if err.Error() == "forbidden" {
+			middleware.AbortJSON(c, 403, "forbidden", err.Error())
+			return
+		}
+		middleware.AbortJSON(c, 404, "not_found", err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"playlist": p})
@@ -271,7 +378,14 @@ func (d *Deps) botSimulate(c *gin.Context) {
 
 func (d *Deps) getCredits(c *gin.Context) {
 	uid := middleware.UserID(c)
-	c.JSON(200, gin.H{"balance": d.Credits.Balance(uid), "packs": services.CreditPacks})
+	demo := os.Getenv("DEMO_TOPUP") == "true"
+	c.JSON(200, gin.H{
+		"balance":    d.Credits.Balance(uid),
+		"packs":      services.CreditPacks,
+		"demo_topup": demo,
+		"payment":    "coming_soon", // real checkout (YooKassa) not wired yet
+		"note":       "Оплата картой скоро. Сейчас topup только при DEMO_TOPUP=true (dev).",
+	})
 }
 
 func (d *Deps) topupCredits(c *gin.Context) {

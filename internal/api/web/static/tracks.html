@@ -12,10 +12,35 @@
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
 <script>
 UVO.mountAuthBar(document.getElementById('auth'));
-(async () => {
-  await UVO.ensureDevToken();
+async function setPublic(id, isPublic) {
+  const res = await UVO.api('/api/tracks/' + id + '/visibility', {
+    method: 'PATCH',
+    body: JSON.stringify({ is_public: isPublic }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error((d.error && d.error.message) || res.status);
+  }
+  load();
+}
+async function shareFeed(id) {
+  const caption = prompt('Подпись для ленты', '') || '';
+  const res = await UVO.api('/api/feed', {
+    method: 'POST',
+    body: JSON.stringify({ track_id: Number(id), caption }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    alert((d.error && d.error.message) || 'Ошибка');
+    return;
+  }
+  alert('В ленте (трек стал публичным)');
+  load();
+}
+async function load() {
   const el = document.getElementById('list');
   try {
+    await UVO.ensureDevToken();
     const res = await UVO.api('/api/tracks');
     const d = await res.json();
     if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
@@ -26,15 +51,32 @@ UVO.mountAuthBar(document.getElementById('auth'));
       const title = t.Title || t.title || 'Трек';
       const dur = t.Duration || t.duration || '?';
       const id = t.ID || t.id;
-      const card = UVO.el('div', { className: 'border border-white/10 rounded-xl p-4' }, [
+      const pub = !!(t.IsPublic || t.is_public);
+      const card = UVO.el('div', { className: 'border border-white/10 rounded-xl p-4 space-y-2' }, [
         UVO.el('div', { className: 'font-medium text-white', text: title + ' · ' + dur + 's' }),
-        UVO.el('audio', { className: 'w-full mt-2', controls: true, src: '/tracks/' + id + '/play' }),
+        UVO.el('div', { className: 'text-xs ' + (pub ? 'text-emerald-400' : 'text-zinc-500'), text: pub ? 'публичный' : 'приватный' }),
+        UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + id + '/play' }),
       ]);
+      const actions = UVO.el('div', { className: 'flex flex-wrap gap-2' });
+      const btnVis = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
+        text: pub ? 'Сделать приватным' : 'Сделать публичным',
+      });
+      btnVis.onclick = () => setPublic(id, !pub).catch(e => alert(e.message));
+      const btnShare = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500',
+        text: 'В ленту',
+      });
+      btnShare.onclick = () => shareFeed(id);
+      actions.appendChild(btnVis);
+      actions.appendChild(btnShare);
+      card.appendChild(actions);
       el.appendChild(card);
     });
   } catch (e) {
     el.textContent = e.message;
   }
-})();
+}
+load();
 </script>
 </body></html>

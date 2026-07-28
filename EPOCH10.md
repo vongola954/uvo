@@ -8,36 +8,36 @@
 ## Сделать
 
 ### Публичность треков
-- [ ] `PATCH/POST /api/tracks/:id/visibility` — `is_public` только owner
-- [ ] Поиск/лента опираются на реально публичные треки
-- [ ] Play: public без auth; private — owner
+- [x] `PATCH /api/tracks/:id/visibility` — `is_public` только owner
+- [x] Поиск/лента опираются на реально публичные треки
+- [x] Play: public без auth; private — owner
+- [x] `GET /api/discover` — публичные треки без auth
 
-### Соц. минимум (выбрать один путь)
-**Вариант A (реализовать):**
-- [ ] Like / Comment API + UI на feed  
-**Вариант B (упростить):**
-- [ ] Убрать неиспользуемые модели из AutoMigrate / UI-обещаний Premier «лицензии»
+### Соц. минимум (вариант A)
+- [x] Like / Comment API + UI на feed
+- [x] Пост в ленту делает трек публичным; feed фильтрует private
 
 ### Плейлисты
-- [ ] `is_public` на плейлист + GetTracks с проверкой
-- [ ] Не отдавать чужие private треки через чужой playlist
+- [x] `is_public` на create + `PATCH /api/playlists/:id/visibility`
+- [x] GetTracksForUser не отдаёт чужие private треки через публичный playlist
 
 ### Оплата
-- [ ] ЮKassa: create payment → webhook → `credits.Add`
-- [ ] Или явно: topup только `DEMO_TOPUP=true`, в UI «оплата скоро», убрать ложные цены как «купить сейчас»
-- [ ] Пакеты `CreditPacks` связаны с реальным checkout
+- [x] Topup только `DEMO_TOPUP=true` (уже было) + UI «оплата скоро» / демо-кнопка
+- [x] Пакеты `CreditPacks` в `GET /api/credits` + `demo_topup` / `payment: coming_soon`
+- [ ] ЮKassa create payment → webhook (отложено; честный stub вместо фейковых «купить»)
 
 ### Тарифы на лендинге
-- [ ] Согласовать Free/Pro/Premier с реальными лимитами плана в User/Subscription **или** упростить блок pricing
+- [x] Убраны ложные Free/Pro/Premier «купить сейчас»; блок кредитов с честным текстом
 
 ## Не входит
 - Полноценный маркетплейс лицензий (можно stub)
+- Полная ЮKassa (следующая итерация)
 
 ## Приёмка
-- [ ] Публичный трек виден в search/feed без owner token
-- [ ] Private не утекает через playlist/play
-- [ ] Topup без DEMO/ЮKassa → 403
-- [ ] README: раздел «Оплата» актуален
+- [x] Публичный трек виден в discover/search/feed
+- [x] Private не утекает через playlist/play
+- [x] Topup без DEMO → 403
+- [x] README: раздел «Оплата» актуален
 
 ## Статус
-⏳ Ждёт эпоху 9
+✅ Закрыта (2.3.0)

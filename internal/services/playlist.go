@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+
 	"uvo/internal/models"
 )
 
@@ -15,8 +16,8 @@ func NewPlaylistService(db *gorm.DB) *PlaylistService {
 	return &PlaylistService{db: db}
 }
 
-func (s *PlaylistService) Create(userID, name, desc string) (*models.Playlist, error) {
-	p := &models.Playlist{UserID: userID, Name: name, Description: desc}
+func (s *PlaylistService) Create(userID, name, desc string, isPublic bool) (*models.Playlist, error) {
+	p := &models.Playlist{UserID: userID, Name: name, Description: desc, IsPublic: isPublic}
 	return p, s.db.Create(p).Error
 }
 
@@ -24,6 +25,21 @@ func (s *PlaylistService) List(userID string) ([]models.Playlist, error) {
 	var list []models.Playlist
 	err := s.db.Where("user_id = ?", userID).Find(&list).Error
 	return list, err
+}
+
+func (s *PlaylistService) SetPublic(userID string, playlistID uint, isPublic bool) (*models.Playlist, error) {
+	var p models.Playlist
+	if err := s.db.First(&p, playlistID).Error; err != nil {
+		return nil, fmt.Errorf("not found")
+	}
+	if p.UserID != userID {
+		return nil, fmt.Errorf("forbidden")
+	}
+	if err := s.db.Model(&p).Update("is_public", isPublic).Error; err != nil {
+		return nil, err
+	}
+	p.IsPublic = isPublic
+	return &p, nil
 }
 
 func (s *PlaylistService) AddTrack(userID string, playlistID, trackID uint) error {
@@ -59,7 +75,8 @@ func (s *PlaylistService) GetTracks(playlistID uint) ([]models.Track, error) {
 	return tracks, nil
 }
 
-// GetTracksForUser returns tracks only if the playlist is owned by userID or is public.
+// GetTracksForUser returns tracks if playlist is owned or public.
+// Non-owners never receive private tracks through a public playlist.
 func (s *PlaylistService) GetTracksForUser(userID string, playlistID uint) ([]models.Track, error) {
 	var p models.Playlist
 	if err := s.db.First(&p, playlistID).Error; err != nil {
@@ -68,5 +85,18 @@ func (s *PlaylistService) GetTracksForUser(userID string, playlistID uint) ([]mo
 	if p.UserID != userID && !p.IsPublic {
 		return nil, fmt.Errorf("forbidden")
 	}
-	return s.GetTracks(playlistID)
+	tracks, err := s.GetTracks(playlistID)
+	if err != nil {
+		return nil, err
+	}
+	if p.UserID == userID {
+		return tracks, nil
+	}
+	out := make([]models.Track, 0, len(tracks))
+	for _, t := range tracks {
+		if t.IsPublic {
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }

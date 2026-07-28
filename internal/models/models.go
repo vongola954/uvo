@@ -76,8 +76,8 @@ type SocialPost struct {
 
 type Like struct {
 	ID     uint   `gorm:"primaryKey"`
-	UserID string `gorm:"not null;index"`
-	PostID uint   `gorm:"not null;index"`
+	UserID string `gorm:"not null;uniqueIndex:idx_like_user_post"`
+	PostID uint   `gorm:"not null;uniqueIndex:idx_like_user_post"`
 }
 
 type Comment struct {

@@ -8,31 +8,79 @@
 </head><body class="p-6 max-w-2xl mx-auto">
 <a href="/" class="text-emerald-400 text-sm">← Студия</a>
 <h1 class="text-2xl font-bold mt-4 mb-6">Лента</h1>
+<p class="text-xs text-zinc-500 mb-4">Только посты с публичными треками. Discover без логина: <code class="text-zinc-400">GET /api/discover</code></p>
 <div id="auth"></div>
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
 <script>
 UVO.mountAuthBar(document.getElementById('auth'));
-(async () => {
-  await UVO.ensureDevToken();
+async function like(id) {
+  await UVO.api('/api/feed/' + id + '/like', { method: 'POST', body: '{}' });
+  load();
+}
+async function comment(id) {
+  const text = prompt('Комментарий');
+  if (!text) return;
+  const res = await UVO.api('/api/feed/' + id + '/comments', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    alert((d.error && d.error.message) || 'Ошибка');
+    return;
+  }
+  load();
+}
+async function load() {
   const el = document.getElementById('list');
   try {
+    await UVO.ensureDevToken();
     const res = await UVO.api('/api/feed');
     const d = await res.json();
     if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
     const posts = d.posts || [];
     el.textContent = '';
-    if (!posts.length) { el.textContent = 'Лента пуста.'; return; }
-    posts.forEach(p => {
+    if (!posts.length) { el.textContent = 'Лента пуста. Сделай трек публичным и опубликуй из «Мои треки».'; return; }
+    for (const p of posts) {
       const tid = p.TrackID || p.track_id;
+      const pid = p.ID || p.id;
       const cap = p.Caption || p.caption || '—';
-      el.appendChild(UVO.el('div', { className: 'border border-white/10 rounded-xl p-4' }, [
-        UVO.el('div', { className: 'text-zinc-500 text-xs', text: 'track #' + tid }),
-        UVO.el('div', { className: 'mt-1', text: cap }),
-      ]));
-    });
+      const likes = p.Likes || p.likes || 0;
+      const card = UVO.el('div', { className: 'border border-white/10 rounded-xl p-4 space-y-2' }, [
+        UVO.el('div', { className: 'text-zinc-500 text-xs', text: 'post #' + pid + ' · track #' + tid }),
+        UVO.el('div', { className: 'mt-1 text-white', text: cap }),
+        UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + tid + '/play' }),
+      ]);
+      const row = UVO.el('div', { className: 'flex gap-2 items-center' });
+      const likeBtn = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10',
+        text: '♥ ' + likes,
+      });
+      likeBtn.onclick = () => like(pid);
+      const cmtBtn = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10',
+        text: 'Коммент',
+      });
+      cmtBtn.onclick = () => comment(pid);
+      row.appendChild(likeBtn);
+      row.appendChild(cmtBtn);
+      card.appendChild(row);
+      const cRes = await UVO.api('/api/feed/' + pid + '/comments');
+      if (cRes.ok) {
+        const cd = await cRes.json();
+        (cd.comments || []).forEach(cm => {
+          card.appendChild(UVO.el('div', {
+            className: 'text-xs text-zinc-500 pl-2 border-l border-white/10',
+            text: (cm.UserID || cm.user_id || '') + ': ' + (cm.Text || cm.text || ''),
+          }));
+        });
+      }
+      el.appendChild(card);
+    }
   } catch (e) {
     el.textContent = e.message;
   }
-})();
+}
+load();
 </script>
 </body></html>

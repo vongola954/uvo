@@ -43,7 +43,8 @@
 - [ ] Atomic credits; Docker non-root; роуты вынесены
 
 ### Эпоха 10 Product & pay
-- [ ] IsPublic работает; topup = DEMO или ЮKassa
+- [x] IsPublic API + discover/feed; playlist не утекает private
+- [x] Like/Comment; topup только DEMO; честный UI кредитов
 
 ### Эпоха 11 Quality
 - [ ] CI + расширенные тесты; ACCEPTANCE 2.x полный проход

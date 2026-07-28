@@ -67,7 +67,7 @@ func main() {
 		Cfg: cfg, DB: gdb, Gen: genSvc, Credits: credits, Limiter: limiter, Jobs: jobs,
 		Tracks: trackRepo, Voice: voiceSvc, Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.2.0",
+		MaxOn: maxC.Enabled(), Version: "2.3.0",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()

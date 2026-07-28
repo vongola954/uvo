@@ -43,16 +43,18 @@ BOT_MODE=polling   # or webhook + POST /api/max/webhook
 Локальный demo: `ALLOW_ANON=true` (и при необходимости `DEV_AUTH=true`, `DEMO_TOPUP=true`).
 
 ## Оплата
-Демо topup: `POST /api/credits/topup` только при `DEMO_TOPUP=true` (+ auth). ЮKassa — эпоха 10.
+- Пакеты кредитов в `GET /api/credits` (`packs`, `payment: coming_soon`).
+- Демо topup: `POST /api/credits/topup` **только** при `DEMO_TOPUP=true` (+ auth) — иначе 403.
+- Реальный checkout (ЮKassa) — ещё не подключён; UI не обещает «купить сейчас».
 
 ## Docs
 - [AUDIT.md](AUDIT.md) — жёсткий аудит 1.9 (2026-07-28)
 - [FIXPLAN.md](FIXPLAN.md) — приоритеты P0→P2
 - [ROADMAP.md](ROADMAP.md) — эпохи 1–11
 
-Текущая версия: **2.2.0** (эпохи 7–9).
+Текущая версия: **2.3.0** (эпохи 7–10).
 
 ## Epochs
 1 AceData · 2 Reliability · 3 Security · 4 MAX · 5 Product UX · 6 Polish  
-**Done:** 7 Lockdown · 8 Auth UX · 9 Prod foundation  
-**Next:** [EPOCH10.md](EPOCH10.md) Product & pay
+**Done:** 7 Lockdown · 8 Auth UX · 9 Prod foundation · 10 Product & pay  
+**Next:** [EPOCH11.md](EPOCH11.md) Quality & CI

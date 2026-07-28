@@ -22,12 +22,12 @@
 | **7** | Lockdown | ✅ 2.0.0 | [EPOCH7.md](EPOCH7.md) |
 | **8** | Auth UX | ✅ 2.1.0 | [EPOCH8.md](EPOCH8.md) |
 | **9** | Prod foundation | ✅ 2.2.0 | [EPOCH9.md](EPOCH9.md) |
-| **10** | Product & pay | ⏳ next | [EPOCH10.md](EPOCH10.md) |
+| **10** | Product & pay | ✅ 2.3.0 | [EPOCH10.md](EPOCH10.md) |
 | **11** | Quality | Тесты, git/CI, логи, ACCEPTANCE 2.x | **2.4** |
 
 ```
 1.9 ──аудит──► 7 Lockdown ──► 8 Auth UX ──► 9 Prod ──► 10 Product ──► 11 Quality
-                 P0              P0/P1         P1           P2              P2
+                 P0              P0/P1         P1           P2 ✅           P2
 ```
 
 ## Правило работы агента / разработчика
@@ -39,5 +39,5 @@
 
 ## Быстрый старт следующей работы
 
-→ **[EPOCH10.md](EPOCH10.md)** — Product & pay (IsPublic, topup/ЮKassa).  
-Эпохи 7–9 закрыты в коде (**2.2.0**). Владельцу: ротировать ключи из аудита.
+→ **[EPOCH11.md](EPOCH11.md)** — Quality & CI.  
+Эпохи 7–10 закрыты в коде (**2.3.0**). Владельцу: ротировать ключи из аудита.

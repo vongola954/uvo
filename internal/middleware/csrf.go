@@ -42,7 +42,8 @@ func needsCSRF(method, path string) bool {
 			return true
 		}
 	}
-	if strings.HasPrefix(path, "/api/tracks") && (method == http.MethodDelete || strings.Contains(path, "/edit")) {
+	if strings.HasPrefix(path, "/api/tracks") && (method == http.MethodDelete || method == http.MethodPatch ||
+		strings.Contains(path, "/edit") || strings.Contains(path, "/visibility")) {
 		return true
 	}
 	return false

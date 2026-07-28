@@ -9,13 +9,28 @@
 <a href="/" class="text-emerald-400 text-sm">← Студия</a>
 <h1 class="text-2xl font-bold mt-4 mb-6">Плейлисты</h1>
 <div id="auth"></div>
-<form id="f" class="flex gap-2 mb-6">
-  <input id="name" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2" placeholder="Название">
+<form id="f" class="flex flex-wrap gap-2 mb-6 items-center">
+  <input id="name" class="flex-1 min-w-[12rem] bg-black/40 border border-white/10 rounded-xl px-3 py-2" placeholder="Название">
+  <label class="text-xs text-zinc-400 flex items-center gap-2">
+    <input id="pub" type="checkbox" class="rounded"> публичный
+  </label>
   <button class="bg-emerald-600 px-4 py-2 rounded-xl font-semibold">Создать</button>
 </form>
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
 <script>
 UVO.mountAuthBar(document.getElementById('auth'));
+async function togglePub(id, next) {
+  const res = await UVO.api('/api/playlists/' + id + '/visibility', {
+    method: 'PATCH',
+    body: JSON.stringify({ is_public: next }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    alert((d.error && d.error.message) || 'Ошибка');
+    return;
+  }
+  load();
+}
 async function load(){
   const el=document.getElementById('list');
   try {
@@ -27,10 +42,24 @@ async function load(){
     el.textContent = '';
     if (!list.length) { el.textContent = 'Нет плейлистов.'; return; }
     list.forEach(p => {
-      el.appendChild(UVO.el('div', {
-        className: 'border border-white/10 rounded-xl p-4',
+      const id = p.ID || p.id;
+      const pub = !!(p.IsPublic || p.is_public);
+      const card = UVO.el('div', { className: 'border border-white/10 rounded-xl p-4 space-y-2' });
+      card.appendChild(UVO.el('div', {
+        className: 'text-white font-medium',
         text: p.Name || p.name || 'Плейлист',
       }));
+      card.appendChild(UVO.el('div', {
+        className: 'text-xs ' + (pub ? 'text-emerald-400' : 'text-zinc-500'),
+        text: pub ? 'публичный' : 'приватный',
+      }));
+      const btn = UVO.el('button', {
+        className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10',
+        text: pub ? 'Сделать приватным' : 'Сделать публичным',
+      });
+      btn.onclick = () => togglePub(id, !pub);
+      card.appendChild(btn);
+      el.appendChild(card);
     });
   } catch (e) {
     el.textContent = e.message;
@@ -42,8 +71,12 @@ document.getElementById('f').onsubmit = async e => {
   await UVO.ensureDevToken();
   await UVO.api('/api/playlists', {
     method: 'POST',
-    body: JSON.stringify({ name: document.getElementById('name').value }),
+    body: JSON.stringify({
+      name: document.getElementById('name').value,
+      is_public: document.getElementById('pub').checked,
+    }),
   });
+  document.getElementById('name').value = '';
   load();
 };
 </script>
