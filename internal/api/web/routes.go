@@ -40,6 +40,7 @@ type Deps struct {
 	Ace       *clients.AceDataClient
 	Eleven    *clients.ElevenLabsClient
 	Hedra     *clients.HedraClient
+	Logins    *services.LoginCodeStore
 	MaxBot    *bot.Bot
 	MaxOn     bool
 	Version   string
@@ -48,7 +49,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.6.3"
+		d.Version = "2.6.4"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -86,6 +87,9 @@ func Register(r *gin.Engine, d *Deps) {
 	})
 
 	r.POST("/api/auth/token", d.authToken)
+	r.POST("/api/auth/exchange", d.authExchange)
+	r.POST("/api/auth/logout", d.authLogout)
+	r.GET("/api/auth/me", d.authMe)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
 	r.GET("/tracks/:id/instrumental", d.playInstrumental)
@@ -141,12 +145,54 @@ func (d *Deps) authToken(c *gin.Context) {
 	if req.UserID == "" {
 		req.UserID = "demo_user"
 	}
-	tok, err := middleware.IssueToken(d.Cfg.JWTSecret, req.UserID, 24*time.Hour)
-	if err != nil {
-		middleware.AbortJSON(c, 500, "internal_error", err.Error())
+	if err := middleware.SetSessionCookie(c, d.Cfg.JWTSecret, req.UserID); err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "session failed")
 		return
 	}
-	c.JSON(200, gin.H{"token": tok, "user_id": req.UserID})
+	tok, err := middleware.IssueToken(d.Cfg.JWTSecret, req.UserID, 24*time.Hour)
+	if err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "token failed")
+		return
+	}
+	c.JSON(200, gin.H{"token": tok, "user_id": req.UserID, "session": "cookie"})
+}
+
+func (d *Deps) authExchange(c *gin.Context) {
+	if d.Logins == nil {
+		middleware.AbortJSON(c, 503, "not_configured", "login codes unavailable")
+		return
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if req.Code == "" {
+		req.Code = c.Query("code")
+	}
+	uid, ok := d.Logins.Consume(req.Code)
+	if !ok {
+		middleware.AbortJSON(c, 401, "invalid_code", "код недействителен или уже использован")
+		return
+	}
+	if err := middleware.SetSessionCookie(c, d.Cfg.JWTSecret, uid); err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "session failed")
+		return
+	}
+	c.JSON(200, gin.H{"ok": true, "user_id": uid})
+}
+
+func (d *Deps) authLogout(c *gin.Context) {
+	middleware.ClearSessionCookie(c)
+	c.JSON(200, gin.H{"ok": true})
+}
+
+func (d *Deps) authMe(c *gin.Context) {
+	uid := middleware.UserID(c)
+	if uid == "" {
+		c.JSON(200, gin.H{"authenticated": false})
+		return
+	}
+	c.JSON(200, gin.H{"authenticated": true, "user_id": uid})
 }
 
 func (d *Deps) maxWebhook(c *gin.Context) {
@@ -243,10 +289,13 @@ func (d *Deps) playVocals(c *gin.Context)       { d.serveTrackSide(c, "vocals") 
 func (d *Deps) playVideo(c *gin.Context)        { d.serveTrackSide(c, "video") }
 
 func (d *Deps) serveMediaAsset(c *gin.Context) {
+	if middleware.UserID(c) == "" {
+		c.Status(401)
+		return
+	}
 	name := c.Param("name")
 	path, err := services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, name))
 	if err != nil {
-		// also try basename only under media root
 		path, err = services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, filepath.Base(name)))
 		if err != nil {
 			c.Status(404)
@@ -697,7 +746,20 @@ func (d *Deps) serveUpload(c *gin.Context) {
 		c.Status(404)
 		return
 	}
-	path, err := services.ResolveUploadPath(d.Cfg.MediaRoot, c.Param("name"))
+	name := filepath.Base(c.Param("name"))
+	secret := d.Cfg.JWTSecret
+	signedOK := services.VerifyMediaSig(name, secret, c.Query("exp"), c.Query("sig"))
+	if !signedOK {
+		if secret != "" && d.Cfg.IsProduction() {
+			c.Status(403)
+			return
+		}
+		if secret != "" && os.Getenv("UVO_ALLOW_INSECURE") != "true" && os.Getenv("ALLOW_ANON") != "true" {
+			c.Status(403)
+			return
+		}
+	}
+	path, err := services.ResolveUploadPath(d.Cfg.MediaRoot, name)
 	if err != nil {
 		c.Status(404)
 		return

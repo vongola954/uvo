@@ -3,7 +3,7 @@
 Жёсткий аудит после prod-hardening + эпох 12–13. Предыдущий (2.4.0 ≈ 5.5/10): см. ниже «Закрыто».
 
 **Метод:** обзор auth/CSRF/ownership/SSRF/credits/webhook/upload/Docker/karaoke/portrait + live `/health`.  
-**Код:** `2.6.3` (эпоха 12: SSRF+idem; эпоха 13: cost controls, sanitize, non-root).
+**Код:** `2.6.4` (эпохи 12–14: SSRF, cost, cookie login, signed uploads, header webhook).
 
 ---
 
@@ -67,7 +67,7 @@ Live подтверждено: `prod_guards:true`, флаги off, `web_public_u
 | ~~H5~~ | ~~Karaoke/portrait без gen RL~~ | **CLOSED 2.6.3** | Limiter на karaoke/portrait/edit |
 | ~~H6~~ | ~~Provider body клиенту~~ | **CLOSED 2.6.3** | writeProviderErr без raw err.Error() |
 | ~~H7~~ | ~~Docker root~~ | **CLOSED 2.6.3** | USER uvo (uid 10001) |
-| **H8** | Webhook `?secret=` | `webhook.go` | Только header; убрать query |
+| ~~H8~~ | ~~Webhook `?secret=`~~ | **CLOSED 2.6.4** | Только `X-Max-Bot-Api-Secret` |
 
 ---
 
@@ -75,11 +75,11 @@ Live подтверждено: `prod_guards:true`, флаги off, `web_public_u
 
 | ID | Находка | Фикс |
 |----|---------|------|
-| M1 | `/media/assets/:name` без auth | Signed TTL или RequireAuth |
-| M2 | `/uploads` без TTL cleanup | Cron delete 24–48h |
-| M3 | JWT в `?token=` 7d | One-time code → HttpOnly cookie; link TTL ≤1h |
+| ~~M1~~ | ~~`/media/assets` без auth~~ | **CLOSED 2.6.4** — RequireAuth (cookie/Bearer) |
+| M2 | `/uploads` без TTL cleanup | Cron delete 24–48h (signed TTL 48h есть) |
+| ~~M3~~ | ~~JWT в `?token=` 7d~~ | **CLOSED 2.6.4** — `?code=` 15m → HttpOnly cookie |
 | M4 | `PGSSLMODE` default `disable` | `require` для postgres |
-| M5 | CSRF `!=`, нет SameSite | Strict + constant-time |
+| ~~M5~~ | ~~CSRF `!=`, нет SameSite~~ | **CLOSED 2.6.4** — Strict + constant-time |
 | M6 | `deleteTrack` без `SafeMediaPath` | Resolve path перед `Remove` |
 | M7 | Открытые `/health` details + `/metrics` | Урезать публичный health; auth metrics |
 | M8 | Private play + Bearer из localStorage | Cookie / signed play URL |

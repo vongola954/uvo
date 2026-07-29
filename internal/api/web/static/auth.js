@@ -1,4 +1,4 @@
-/** UVO auth helper — Bearer JWT + CSRF for /api/* */
+/** UVO auth — HttpOnly session cookie (MAX /login code) + CSRF */
 (function (global) {
   const TOKEN_KEY = 'uvo_token';
 
@@ -13,10 +13,24 @@
     } catch (_) {}
   }
 
-  // Capture ?token= from MAX /login deep link, then strip from URL
-  (function captureTokenFromURL() {
+  // One-time ?code= from MAX /login → HttpOnly cookie session
+  (async function captureLoginCode() {
     try {
       const u = new URL(location.href);
+      const code = u.searchParams.get('code');
+      if (code) {
+        u.searchParams.delete('code');
+        history.replaceState({}, '', u.pathname + u.search + u.hash);
+        await fetch('/api/auth/exchange', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code }),
+        });
+        setToken(''); // prefer cookie session
+        return;
+      }
+      // Legacy ?token= deep links (pre-2.6.4)
       const t = u.searchParams.get('token');
       if (t) {
         setToken(t);
@@ -46,7 +60,7 @@
     if (opts.body instanceof FormData) {
       delete headers['Content-Type'];
     }
-    const res = await fetch(path, Object.assign({}, opts, { headers }));
+    const res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
     if (res.status === 401) {
       const err = new Error('Нужна авторизация: в MAX-боте отправьте /login и откройте ссылку');
       err.status = 401;
@@ -56,16 +70,33 @@
   }
 
   async function ensureDevToken() {
+    const me = await fetch('/api/auth/me', { credentials: 'include' });
+    if (me.ok) {
+      const data = await me.json();
+      if (data.authenticated) return 'cookie';
+    }
     if (getToken()) return getToken();
     const res = await fetch('/api/auth/token', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: 'demo_user' }),
     });
     if (!res.ok) return '';
     const data = await res.json();
     if (data.token) setToken(data.token);
-    return data.token || '';
+    return data.token || (data.session ? 'cookie' : '');
+  }
+
+  async function sessionOK() {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return !!data.authenticated;
+    } catch (_) {
+      return !!getToken();
+    }
   }
 
   function el(tag, props, children) {
@@ -89,8 +120,11 @@
   function mountAuthBar(parent) {
     if (!parent) return;
     const bar = el('div', { className: 'flex items-center gap-2 text-xs text-zinc-500 mb-4' });
-    const status = el('span', { text: getToken() ? 'сессия: ok' : 'сессия: нет — MAX /login' });
+    const status = el('span', { text: 'сессия: …' });
     status.id = 'uvo-auth-status';
+    sessionOK().then((ok) => {
+      status.textContent = ok ? 'сессия: ok' : 'сессия: нет — MAX /login';
+    });
     const btn = el('button', {
       type: 'button',
       className: 'border border-white/15 rounded-lg px-2 py-1 hover:border-emerald-500 hover:text-emerald-400',
@@ -109,5 +143,5 @@
     parent.prepend(bar);
   }
 
-  global.UVO = { getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, el, mountAuthBar };
+  global.UVO = { getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK, el, mountAuthBar };
 })(window);

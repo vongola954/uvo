@@ -10,7 +10,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"uvo/internal/clients"
-	"uvo/internal/middleware"
 	"uvo/internal/services"
 )
 
@@ -19,19 +18,19 @@ type Bot struct {
 	gen       *services.GenerationService
 	limiter   *services.RateLimiter
 	credits   *services.CreditService
+	logins    *services.LoginCodeStore
 	states    sync.Map
 	marker    *int64
 	stop      chan struct{}
 	webURL    string
-	jwtSecret string
 }
 
-func New(max *clients.MAXClient, gen *services.GenerationService, lim *services.RateLimiter, credits *services.CreditService, jwtSecret string) *Bot {
+func New(max *clients.MAXClient, gen *services.GenerationService, lim *services.RateLimiter, credits *services.CreditService, logins *services.LoginCodeStore) *Bot {
 	web := strings.TrimRight(os.Getenv("WEB_PUBLIC_URL"), "/")
 	if web == "" {
 		web = "http://127.0.0.1:8010"
 	}
-	return &Bot{max: max, gen: gen, limiter: lim, credits: credits, stop: make(chan struct{}), webURL: web, jwtSecret: jwtSecret}
+	return &Bot{max: max, gen: gen, limiter: lim, credits: credits, logins: logins, stop: make(chan struct{}), webURL: web}
 }
 
 func (b *Bot) studioURL(path string) string {
@@ -194,21 +193,21 @@ func (b *Bot) sendLoginLink(chatID int64, userID string) {
 }
 
 func (b *Bot) sendLoginLinkTo(chatID int64, userID, path string) {
-	if b.jwtSecret == "" {
+	if b.logins == nil {
 		_ = b.max.SendStudio(chatID, "Студия (без автологина):", b.studioURL(path))
 		return
 	}
-	tok, err := middleware.IssueToken(b.jwtSecret, userID, 7*24*time.Hour)
+	code, err := b.logins.Issue(userID, 15*time.Minute)
 	if err != nil {
-		_ = b.max.SendMessage(chatID, "Не удалось выдать сессию")
+		_ = b.max.SendMessage(chatID, "Не удалось выдать код входа")
 		return
 	}
 	sep := "?"
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	url := b.studioURL(path) + sep + "token=" + tok
-	_ = b.max.SendStudio(chatID, "Вход в UVO (ссылка на 7 дней, только для вас):", url)
+	url := b.studioURL(path) + sep + "code=" + code
+	_ = b.max.SendStudio(chatID, "Вход в UVO (одноразовая ссылка, 15 минут):", url)
 }
 
 func (b *Bot) HandleWebhookUpdate(u clients.MAXUpdate) {

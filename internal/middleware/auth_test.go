@@ -67,6 +67,55 @@ func TestMaxWebhookAuth(t *testing.T) {
 	if w3.Code != 200 {
 		t.Fatalf("valid secret want 200, got %d", w3.Code)
 	}
+
+	// Query secret must NOT work (epoch 14)
+	w4 := httptest.NewRecorder()
+	req4 := httptest.NewRequest(http.MethodPost, "/hook?secret=s3cret", nil)
+	r.ServeHTTP(w4, req4)
+	if w4.Code != 401 {
+		t.Fatalf("query secret must be rejected, got %d", w4.Code)
+	}
+}
+
+func TestOptionalAuthSessionCookie(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Unsetenv("ALLOW_ANON")
+	secret := "jwt-cookie-secret-for-tests!!"
+
+	r := gin.New()
+	r.POST("/login", func(c *gin.Context) {
+		if err := SetSessionCookie(c, secret, "cookie-user"); err != nil {
+			c.Status(500)
+			return
+		}
+		c.Status(200)
+	})
+	r.GET("/me", OptionalAuth(secret), RequireAuth(), func(c *gin.Context) {
+		c.JSON(200, gin.H{"uid": UserID(c)})
+	})
+
+	warm := httptest.NewRecorder()
+	r.ServeHTTP(warm, httptest.NewRequest(http.MethodPost, "/login", nil))
+	if warm.Code != 200 {
+		t.Fatalf("login want 200, got %d", warm.Code)
+	}
+	var sess string
+	for _, c := range warm.Result().Cookies() {
+		if c.Name == SessionCookie {
+			sess = c.Value
+		}
+	}
+	if sess == "" {
+		t.Fatal("expected session cookie")
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	req.AddCookie(&http.Cookie{Name: SessionCookie, Value: sess})
+	r.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "cookie-user") {
+		t.Fatalf("cookie auth failed: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestOptionalAuthJWT(t *testing.T) {

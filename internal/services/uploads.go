@@ -38,18 +38,6 @@ func PublicUpload(mediaRoot string, data []byte, ext string) (filename, absPath 
 	return filename, absPath, nil
 }
 
-// PublicURL builds absolute URL AceData can fetch. Requires WEB_PUBLIC_URL / cfg.
-func PublicURL(base, filename string) (string, error) {
-	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if base == "" {
-		return "", fmt.Errorf("WEB_PUBLIC_URL не задан — AceData не сможет скачать файл (нужен публичный HTTPS URL)")
-	}
-	if filename == "" || strings.Contains(filename, "..") || strings.ContainsAny(filename, "/\\") {
-		return "", fmt.Errorf("bad upload filename")
-	}
-	return base + "/uploads/" + filename, nil
-}
-
 // ResolveUploadPath maps /uploads/:name to disk path under mediaRoot/uploads.
 func ResolveUploadPath(mediaRoot, name string) (string, error) {
 	if mediaRoot == "" {

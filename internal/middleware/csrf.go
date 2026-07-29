@@ -2,9 +2,9 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,50 +20,41 @@ func newToken() string {
 }
 
 func csrfSecure() bool {
-	u := strings.ToLower(os.Getenv("WEB_PUBLIC_URL"))
-	return strings.HasPrefix(u, "https://")
+	return cookieSecure()
 }
 
 func needsCSRF(method, path string) bool {
 	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
 		return false
 	}
-	prefixes := []string{
-		"/api/feed",
-		"/api/playlists",
-		"/api/generate",
-		"/api/voice",
-		"/api/tts",
-		"/api/cover",
-		"/api/credits/topup",
-		"/api/bot/simulate",
+	if path == "/api/auth/exchange" || path == "/api/auth/logout" {
+		return false
 	}
-	for _, p := range prefixes {
-		if strings.HasPrefix(path, p) {
-			return true
-		}
+	if !strings.HasPrefix(path, "/api/") {
+		return false
 	}
-	if strings.HasPrefix(path, "/api/tracks") && (method == http.MethodDelete || method == http.MethodPatch ||
-		strings.Contains(path, "/edit") || strings.Contains(path, "/visibility") ||
-		strings.Contains(path, "/karaoke") || strings.Contains(path, "/portrait")) {
-		return true
+	// All mutating /api/* except webhook (uses its own secret)
+	if path == "/api/max/webhook" || path == "/api/auth/token" {
+		return false
 	}
-	return false
+	return true
 }
 
-// CSRF issues cookie token on safe methods; validates header on mutating /api/*.
+// CSRF issues readable cookie (double-submit) + SameSite; validates header on mutate.
 func CSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok, err := c.Cookie(csrfCookie)
 		if err != nil || tok == "" {
 			tok = newToken()
-			c.SetCookie(csrfCookie, tok, 86400, "/", "", csrfSecure(), true)
+			c.SetSameSite(http.SameSiteStrictMode)
+			// HttpOnly=false: JS must read cookie for X-CSRF-Token header
+			c.SetCookie(csrfCookie, tok, 86400, "/", "", csrfSecure(), false)
 		}
 		c.Header(csrfHeader, tok)
 
 		if needsCSRF(c.Request.Method, c.Request.URL.Path) {
 			got := c.GetHeader(csrfHeader)
-			if got == "" || got != tok {
+			if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(tok)) != 1 {
 				AbortJSON(c, http.StatusForbidden, "csrf_rejected", "invalid csrf token")
 				return
 			}

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"crypto/subtle"
 	"net/http"
 	"os"
 
@@ -10,8 +9,7 @@ import (
 
 const maxWebhookSecretHeader = "X-Max-Bot-Api-Secret"
 
-// MaxWebhookAuth validates MAX_WEBHOOK_SECRET via header or ?secret=.
-// Required whenever the webhook endpoint is hit; BOT_MODE=webhook also requires the env to be set.
+// MaxWebhookAuth validates MAX_WEBHOOK_SECRET via header only (no query secret).
 func MaxWebhookAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		secret := os.Getenv("MAX_WEBHOOK_SECRET")
@@ -20,10 +18,7 @@ func MaxWebhookAuth() gin.HandlerFunc {
 			return
 		}
 		got := c.GetHeader(maxWebhookSecretHeader)
-		if got == "" {
-			got = c.Query("secret")
-		}
-		if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+		if !SecretEqual(got, secret) {
 			AbortJSON(c, http.StatusUnauthorized, "unauthorized", "invalid webhook secret")
 			return
 		}
