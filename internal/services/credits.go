@@ -91,7 +91,19 @@ func (c *CreditService) SpendTx(tx *gorm.DB, userID string, n int) error {
 }
 
 var CreditPacks = []map[string]interface{}{
-	{"id": "pack10", "name": "10 генераций", "credits": 10, "price_rub": 199},
-	{"id": "pack30", "name": "30 генераций", "credits": 30, "price_rub": 499},
-	{"id": "pack100", "name": "100 генераций", "credits": 100, "price_rub": 1299},
+	{"id": "pack10", "name": "10 кредитов", "credits": 10, "price_rub": 199},
+	{"id": "pack30", "name": "30 кредитов", "credits": 30, "price_rub": 499},
+	{"id": "pack100", "name": "100 кредитов", "credits": 100, "price_rub": 699},
+	{"id": "pack500", "name": "500 кредитов", "credits": 500, "price_rub": 1690},
+	{"id": "pack2000", "name": "2000 кредитов", "credits": 2000, "price_rub": 5990},
+}
+
+// PackByID returns credits and price for a known pack.
+func PackByID(id string) (credits, priceRub int, name string, ok bool) {
+	for _, p := range CreditPacks {
+		if p["id"] == id {
+			return p["credits"].(int), p["price_rub"].(int), p["name"].(string), true
+		}
+	}
+	return 0, 0, "", false
 }

@@ -40,6 +40,7 @@ type Deps struct {
 	Ace       *clients.AceDataClient
 	Eleven    *clients.ElevenLabsClient
 	Hedra     *clients.HedraClient
+	Yoo       *clients.YooKassaClient
 	Logins    *services.LoginCodeStore
 	MaxBot    *bot.Bot
 	MaxOn     bool
@@ -49,7 +50,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.6.4"
+		d.Version = "2.7.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -61,6 +62,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.GET("/metrics", middleware.MetricsHandler)
 	r.GET("/uploads/:name", d.serveUpload)
 	r.GET("/media/assets/:name", d.serveMediaAsset)
+	r.GET("/api/presets", d.listPresets)
 
 	r.GET("/health", func(c *gin.Context) {
 		aceSt := d.Ace.Status()
@@ -91,6 +93,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.POST("/api/auth/logout", d.authLogout)
 	r.GET("/api/auth/me", d.authMe)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
+	r.POST("/api/payments/yookassa", d.yooWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
 	r.GET("/tracks/:id/instrumental", d.playInstrumental)
 	r.GET("/tracks/:id/vocals", d.playVocals)
@@ -122,6 +125,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.POST("/bot/simulate", d.botSimulate)
 		api.GET("/credits", d.getCredits)
 		api.POST("/credits/topup", d.topupCredits)
+		api.POST("/credits/checkout", d.checkoutCredits)
 		api.POST("/tracks/:id/edit", d.editTrack)
 		api.GET("/tracks/:id/revisions", d.trackRevisions)
 		api.GET("/search", d.search)
@@ -505,46 +509,6 @@ func (d *Deps) botSimulate(c *gin.Context) {
 	}
 	d.MaxBot.HandleText(req.UserID, req.Text, req.ChatID)
 	c.JSON(200, gin.H{"ok": true})
-}
-
-func (d *Deps) getCredits(c *gin.Context) {
-	uid := middleware.UserID(c)
-	demo := os.Getenv("DEMO_TOPUP") == "true"
-	c.JSON(200, gin.H{
-		"balance":    d.Credits.Balance(uid),
-		"packs":      services.CreditPacks,
-		"demo_topup": demo,
-		"payment":    "coming_soon", // real checkout (YooKassa) not wired yet
-		"note":       "Оплата картой скоро. Сейчас topup только при DEMO_TOPUP=true (dev).",
-	})
-}
-
-func (d *Deps) topupCredits(c *gin.Context) {
-	if os.Getenv("DEMO_TOPUP") != "true" {
-		middleware.AbortJSON(c, 403, "forbidden", "demo topup disabled (set DEMO_TOPUP=true)")
-		return
-	}
-	uid := middleware.UserID(c)
-	var req struct {
-		PackID  string `json:"pack_id"`
-		Credits int    `json:"credits"`
-	}
-	_ = c.ShouldBindJSON(&req)
-	n := req.Credits
-	for _, p := range services.CreditPacks {
-		if p["id"] == req.PackID {
-			n = p["credits"].(int)
-			break
-		}
-	}
-	if n <= 0 {
-		n = 10
-	}
-	if n > 1000 {
-		n = 1000
-	}
-	d.Credits.Add(uid, n)
-	c.JSON(200, gin.H{"balance": d.Credits.Balance(uid), "added": n, "note": "demo topup without payment"})
 }
 
 func (d *Deps) editTrack(c *gin.Context) {

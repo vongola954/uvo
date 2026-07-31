@@ -152,3 +152,16 @@ type JobRecord struct {
 	CreatedAt time.Time `gorm:"index"`
 	UpdatedAt time.Time
 }
+
+// PaymentOrder tracks YooKassa (or demo) credit purchases.
+type PaymentOrder struct {
+	ID                string `gorm:"primaryKey"`
+	UserID            string `gorm:"index;not null"`
+	PackID            string `gorm:"index"`
+	Credits           int
+	AmountRub         int
+	ProviderPaymentID string    `gorm:"index"`
+	Status            string    `gorm:"index"` // pending | succeeded | canceled
+	CreatedAt         time.Time `gorm:"index"`
+	UpdatedAt         time.Time
+}

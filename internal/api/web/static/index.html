@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
-  <title>UVO — AI-музыка 2026</title>
+  <title>UVO — нейросеть для музыки | кавер, караоке, свой голос</title>
+  <meta name="description" content="UVO: генерация песен, клон голоса, ИИ-кавер, караоке-видео и singing portrait. Вход через MAX /login.">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
   <style>
@@ -156,10 +157,10 @@
       <div class="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
         <a href="/" class="text-xl font-black tracking-tight">UVO<span style="color:var(--accent)">.</span></a>
         <div class="hidden sm:flex gap-6 text-sm text-zinc-400">
+          <a href="#presets" class="hover:text-white transition">Пресеты</a>
+          <a href="#showcase" class="hover:text-white transition">Витрина</a>
           <a href="#generate" class="hover:text-white transition">Студия</a>
           <a href="/tracks.html" class="hover:text-white transition">Треки</a>
-          <a href="/feed.html" class="hover:text-white transition">Лента</a>
-          <a href="/playlists.html" class="hover:text-white transition">Плейлисты</a>
           <a href="#pricing" class="hover:text-white transition">Тарифы</a>
         </div>
         <a href="#generate" class="btn-primary text-sm font-semibold px-4 py-2 rounded-full">Создать</a>
@@ -171,20 +172,38 @@
       <div class="max-w-3xl mx-auto text-center">
         <div class="chip mb-6">
           <span class="pulse-dot"></span>
-          Suno v5.5 · AceData · пополните баланс при 503
+          MAX /login · свой голос · караоке-видео
         </div>
         <h1 class="text-4xl sm:text-6xl font-black leading-[1.08] tracking-tight mb-5">
           Музыка, которую<br>
           <span class="serif italic font-normal text-5xl sm:text-7xl" style="color:var(--accent)">ты задумал</span>
         </h1>
-        <p class="text-lg text-zinc-400 max-w-lg mx-auto mb-10 leading-relaxed">
-          Промпт → трек с вокалом. Клон голоса, лента, плейлисты —
-          веб-студия сильнее обычного Telegram-бота.
+        <p class="text-lg text-zinc-400 max-w-xl mx-auto mb-10 leading-relaxed">
+          Генерация, кавер своим голосом, караоке с видео и singing portrait —
+          студия + MAX-бот. Выбери пресет или опиши трек.
         </p>
         <div class="flex flex-col sm:flex-row gap-3 justify-center">
-          <a href="#generate" class="btn-primary px-8 py-3.5 rounded-full font-bold">Открыть студию</a>
-          <a href="#features" class="btn-ghost px-8 py-3.5 rounded-full font-medium text-zinc-300">Как это работает</a>
+          <a href="#presets" class="btn-primary px-8 py-3.5 rounded-full font-bold">Виральные пресеты</a>
+          <a href="#generate" class="btn-ghost px-8 py-3.5 rounded-full font-medium text-zinc-300">Открыть студию</a>
         </div>
+        <p class="text-xs text-zinc-600 mt-6">Вход: в MAX-боте отправьте <span class="text-zinc-400">/login</span> и откройте ссылку</p>
+      </div>
+    </section>
+
+    <section id="presets" class="px-5 pb-14">
+      <div class="max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold text-center mb-2">Виральные пресеты</h2>
+        <p class="text-center text-sm text-zinc-500 mb-6">Готовые связки промпт + стиль — один тап</p>
+        <div id="presets-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+      </div>
+    </section>
+
+    <section id="showcase" class="px-5 pb-16">
+      <div class="max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold text-center mb-2">Витрина</h2>
+        <p class="text-center text-sm text-zinc-500 mb-6">Публичные треки сообщества — «создать похожее»</p>
+        <div id="showcase-grid" class="grid sm:grid-cols-2 gap-3"></div>
+        <p id="showcase-empty" class="hidden text-center text-sm text-zinc-600 mt-4">Пока нет публичных треков — сделайте свой и откройте видимость в «Треки».</p>
       </div>
     </section>
 
@@ -206,6 +225,7 @@
         </div>
 
         <div id="panel-gen">
+        <div id="preset-chips" class="flex flex-wrap gap-2 mb-4"></div>
         <form id="gen-form" class="space-y-4">
           <div>
             <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Промпт</label>
@@ -333,19 +353,19 @@
             <p class="text-sm text-zinc-500">Загрузи любой трек — спой своим голосом.</p>
           </div>
           <div class="glass bento p-5">
-            <div class="text-2xl mb-3">📂</div>
-            <h3 class="font-semibold mb-1">Плейлисты</h3>
-            <p class="text-sm text-zinc-500">Свои коллекции и публичные.</p>
+            <div class="text-2xl mb-3">🎤</div>
+            <h3 class="font-semibold mb-1">Караоке + видео</h3>
+            <p class="text-sm text-zinc-500">Стемы, timing и mp4 — то, что у конкурентов «скоро».</p>
           </div>
           <div class="glass bento p-5">
-            <div class="text-2xl mb-3">🌐</div>
-            <h3 class="font-semibold mb-1">Лента</h3>
-            <p class="text-sm text-zinc-500">Посты только со своими треками.</p>
+            <div class="text-2xl mb-3">🎬</div>
+            <h3 class="font-semibold mb-1">Singing portrait</h3>
+            <p class="text-sm text-zinc-500">Фото + трек → клип с lip-sync / Kling.</p>
           </div>
           <div class="glass bento p-5 lg:col-span-2">
             <div class="text-2xl mb-3">💎</div>
-            <h3 class="font-semibold mb-1">Кредиты как у ботов, платформа сильнее</h3>
-            <p class="text-sm text-zinc-500">Пакеты генераций + веб + MAX — не только чат.</p>
+            <h3 class="font-semibold mb-1">MAX + веб, не только чат</h3>
+            <p class="text-sm text-zinc-500">/login → студия. Кредиты и пакеты через ЮKassa.</p>
           </div>
         </div>
       </div>
@@ -354,39 +374,10 @@
     <section id="pricing" class="px-5 pb-20">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold text-center mb-3">Кредиты</h2>
-        <p class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">Оплата картой скоро (ЮKassa). Сейчас: 3 бесплатных кредита при старте; демо-пополнение только при <code class="text-zinc-400">DEMO_TOPUP=true</code>.</p>
-        <div class="grid sm:grid-cols-3 gap-3" id="packs-grid">
-          <div class="glass p-6 text-center">
-            <p class="text-xs text-zinc-500 mb-1">Старт</p>
-            <p class="text-3xl font-black mb-4">0 ₽</p>
-            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
-              <li>✓ 3 кредита при регистрации</li>
-              <li>✓ Студия + MAX bot</li>
-              <li>✓ Публичные треки / лента</li>
-            </ul>
-            <a href="#generate" class="btn-ghost block w-full py-2.5 rounded-xl text-sm">Начать</a>
-          </div>
-          <div class="glass p-6 text-center relative" style="border-color:rgba(52,211,153,0.35)">
-            <span class="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-bold px-2.5 py-0.5 rounded-full">скоро</span>
-            <p class="text-xs text-emerald-400 mb-1">Пакеты</p>
-            <p class="text-3xl font-black mb-4">от 199 ₽</p>
-            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
-              <li>✓ 10 / 30 / 100 генераций</li>
-              <li>✓ Клон голоса и правки</li>
-              <li>○ Checkout — в разработке</li>
-            </ul>
-            <button type="button" id="btn-packs" class="btn-primary block w-full py-2.5 rounded-xl text-sm font-bold">Смотреть пакеты</button>
-          </div>
-          <div class="glass p-6 text-center">
-            <p class="text-xs text-zinc-500 mb-1">Demo topup</p>
-            <p class="text-3xl font-black mb-4">dev</p>
-            <ul class="text-sm text-zinc-400 space-y-2 mb-6 text-left">
-              <li>✓ Только локально / staging</li>
-              <li>✓ Без реальных денег</li>
-              <li>✓ Prod: DEMO_TOPUP=false</li>
-            </ul>
-            <button type="button" id="btn-demo-topup" class="btn-ghost block w-full py-2.5 rounded-xl text-sm">Демо +10</button>
-          </div>
+        <p id="pricing-lead" class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">3 кредита при старте. Оплата картой — ЮKassa (если ключи заданы на сервере).</p>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" id="packs-grid"></div>
+        <div class="mt-4 flex flex-wrap gap-2 justify-center">
+          <button type="button" id="btn-demo-topup" class="btn-ghost px-4 py-2 rounded-xl text-sm hidden">Демо +10</button>
         </div>
         <p id="packs-note" class="text-center text-xs text-zinc-600 mt-4"></p>
       </div>
@@ -401,7 +392,199 @@
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
+    function applyPreset(p) {
+      if (!p) return;
+      const prompt = document.getElementById('prompt');
+      const style = document.getElementById('style');
+      const lyrics = document.getElementById('lyrics');
+      const instrumental = document.getElementById('instrumental');
+      if (prompt) prompt.value = p.prompt || '';
+      if (style && p.style) {
+        let found = false;
+        for (const o of style.options) {
+          if (o.value === p.style) { found = true; break; }
+        }
+        if (!found && p.style) {
+          style.appendChild(UVO.el('option', { value: p.style, text: p.style }));
+        }
+        style.value = p.style;
+      }
+      if (lyrics && p.lyrics_hint) lyrics.value = p.lyrics_hint;
+      if (instrumental) instrumental.checked = !!p.instrumental;
+      document.getElementById('generate')?.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function applyQueryPrefill() {
+      try {
+        const u = new URL(location.href);
+        const prompt = u.searchParams.get('prompt');
+        const style = u.searchParams.get('style');
+        const lyrics = u.searchParams.get('lyrics');
+        if (prompt || style || lyrics) {
+          applyPreset({ prompt: prompt || '', style: style || '', lyrics_hint: lyrics || '' });
+          u.searchParams.delete('prompt');
+          u.searchParams.delete('style');
+          u.searchParams.delete('lyrics');
+          history.replaceState({}, '', u.pathname + u.search + u.hash);
+        }
+        if (u.searchParams.get('paid') === '1') {
+          const note = document.getElementById('packs-note');
+          if (note) note.textContent = 'Оплата принята (если статус succeeded — кредиты появятся через пару секунд). Обновите баланс.';
+        }
+      } catch (_) {}
+    }
+
+    async function loadPresets() {
+      try {
+        const r = await fetch('/api/presets');
+        const d = await r.json();
+        const presets = d.presets || [];
+        const grid = document.getElementById('presets-grid');
+        const chips = document.getElementById('preset-chips');
+        if (grid) {
+          grid.textContent = '';
+          presets.forEach((p) => {
+            const btn = UVO.el('button', {
+              type: 'button',
+              className: 'glass text-left p-3 hover:border-emerald-500/40 transition text-sm',
+              onclick: () => applyPreset(p),
+            }, [
+              UVO.el('div', { className: 'text-lg mb-1', text: (p.emoji || '') + ' ' + (p.title || p.id) }),
+              UVO.el('div', { className: 'text-[11px] text-zinc-500 line-clamp-2', text: p.style || p.category || '' }),
+            ]);
+            grid.appendChild(btn);
+          });
+        }
+        if (chips) {
+          chips.textContent = '';
+          presets.slice(0, 8).forEach((p) => {
+            chips.appendChild(UVO.el('button', {
+              type: 'button',
+              className: 'text-[11px] px-2.5 py-1 rounded-full border border-white/10 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-400',
+              text: (p.emoji || '') + ' ' + (p.title || p.id),
+              onclick: () => applyPreset(p),
+            }));
+          });
+        }
+      } catch (_) {}
+    }
+
+    async function loadShowcase() {
+      try {
+        const r = await fetch('/api/discover');
+        const d = await r.json();
+        const tracks = d.tracks || [];
+        const grid = document.getElementById('showcase-grid');
+        const empty = document.getElementById('showcase-empty');
+        if (!grid) return;
+        grid.textContent = '';
+        if (!tracks.length) {
+          if (empty) empty.classList.remove('hidden');
+          return;
+        }
+        if (empty) empty.classList.add('hidden');
+        tracks.slice(0, 8).forEach((t) => {
+          const id = t.ID || t.id;
+          const title = t.Title || t.title || ('Трек ' + id);
+          const genre = t.Genre || t.genre || '';
+          const prompt = t.Prompt || t.prompt || '';
+          const lyrics = t.Lyrics || t.lyrics || '';
+          const play = '/tracks/' + id + '/play';
+          const card = UVO.el('div', { className: 'glass p-4 flex flex-col gap-3' }, [
+            UVO.el('div', { className: 'font-medium text-sm', text: title }),
+            UVO.el('div', { className: 'text-xs text-zinc-500', text: genre || 'публичный трек' }),
+            UVO.el('audio', { controls: true, src: play, className: 'w-full' }),
+            UVO.el('button', {
+              type: 'button',
+              className: 'btn-ghost text-xs py-2 rounded-xl',
+              text: 'Создать похожее',
+              onclick: () => applyPreset({
+                prompt: prompt || ('в стиле трека «' + title + '»' + (genre ? ', ' + genre : '')),
+                style: genre || '',
+                lyrics_hint: lyrics || '',
+              }),
+            }),
+          ]);
+          grid.appendChild(card);
+        });
+      } catch (_) {
+        const empty = document.getElementById('showcase-empty');
+        if (empty) empty.classList.remove('hidden');
+      }
+    }
+
+    function renderPacks(packs, payment) {
+      const grid = document.getElementById('packs-grid');
+      if (!grid) return;
+      grid.textContent = '';
+      const free = UVO.el('div', { className: 'glass p-6 text-center' }, [
+        UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: 'Старт' }),
+        UVO.el('p', { className: 'text-3xl font-black mb-4', text: '0 ₽' }),
+        UVO.el('ul', { className: 'text-sm text-zinc-400 space-y-2 mb-6 text-left' }, [
+          UVO.el('li', { text: '✓ 3 кредита при старте' }),
+          UVO.el('li', { text: '✓ Студия + MAX /login' }),
+          UVO.el('li', { text: '✓ Караоке и кавер' }),
+        ]),
+        UVO.el('a', { href: '#generate', className: 'btn-ghost block w-full py-2.5 rounded-xl text-sm', text: 'Начать' }),
+      ]);
+      grid.appendChild(free);
+      (packs || []).forEach((p) => {
+        const btn = UVO.el('button', {
+          type: 'button',
+          className: 'btn-primary block w-full py-2.5 rounded-xl text-sm font-bold',
+          text: payment === 'yookassa' ? 'Оплатить' : (payment === 'demo' ? 'Демо' : 'Скоро'),
+          onclick: async () => {
+            if (payment === 'yookassa') {
+              try {
+                const res = await UVO.api('/api/credits/checkout', {
+                  method: 'POST',
+                  body: JSON.stringify({ pack_id: p.id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  alert((data.error && data.error.message) || 'Оплата недоступна');
+                  return;
+                }
+                if (data.confirmation_url) location.href = data.confirmation_url;
+              } catch (e) {
+                alert(e.message || 'Ошибка оплаты');
+              }
+              return;
+            }
+            if (payment === 'demo') {
+              const tr = await UVO.api('/api/credits/topup', {
+                method: 'POST',
+                body: JSON.stringify({ pack_id: p.id }),
+              });
+              const td = await tr.json().catch(() => ({}));
+              if (!tr.ok) {
+                alert((td.error && td.error.message) || 'Демо topup выключен');
+                return;
+              }
+              const el = document.getElementById('credits-chip');
+              if (el) el.textContent = 'кредиты: ' + td.balance;
+              alert('Демо: +' + td.added + ' кредитов');
+              return;
+            }
+            alert('Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY на сервере Amvera, webhook: /api/payments/yookassa');
+          },
+        });
+        grid.appendChild(UVO.el('div', {
+          className: 'glass p-6 text-center',
+          style: p.credits >= 100 ? 'border-color:rgba(52,211,153,0.35)' : '',
+        }, [
+          UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: p.name || p.id }),
+          UVO.el('p', { className: 'text-3xl font-black mb-2', text: (p.price_rub || 0) + ' ₽' }),
+          UVO.el('p', { className: 'text-sm text-zinc-400 mb-6', text: (p.credits || 0) + ' кредитов' }),
+          btn,
+        ]));
+      });
+    }
+
     (async () => {
+      applyQueryPrefill();
+      await loadPresets();
+      await loadShowcase();
       await UVO.ensureDevToken();
       try {
         const r = await UVO.api('/api/styles');
@@ -419,12 +602,15 @@
         const el = document.getElementById('credits-chip');
         if (el && r.ok) el.textContent = 'кредиты: ' + d.balance;
         const note = document.getElementById('packs-note');
-        if (note && r.ok) {
-          const packs = (d.packs || []).map(p => p.name + ' — ' + p.price_rub + ' ₽').join(' · ');
-          note.textContent = (d.note || '') + (packs ? ' Пакеты: ' + packs : '');
+        const lead = document.getElementById('pricing-lead');
+        if (r.ok) {
+          if (note) note.textContent = d.note || '';
+          if (lead && d.payment === 'yookassa') lead.textContent = 'Оплата картой через ЮKassa. Кредиты зачисляются после успешного платежа.';
+          renderPacks(d.packs || [], d.payment || 'coming_soon');
         }
         const demoBtn = document.getElementById('btn-demo-topup');
-        if (demoBtn) {
+        if (demoBtn && d.demo_topup) {
+          demoBtn.classList.remove('hidden');
           demoBtn.onclick = async () => {
             const tr = await UVO.api('/api/credits/topup', {
               method: 'POST',
@@ -432,20 +618,19 @@
             });
             const td = await tr.json().catch(() => ({}));
             if (!tr.ok) {
-              alert((td.error && td.error.message) || 'Демо topup выключен (нужен DEMO_TOPUP=true)');
+              alert((td.error && td.error.message) || 'Демо topup выключен');
               return;
             }
             if (el) el.textContent = 'кредиты: ' + td.balance;
             alert('Демо: +' + td.added + ' кредитов');
           };
         }
-        const packsBtn = document.getElementById('btn-packs');
-        if (packsBtn) {
-          packsBtn.onclick = () => {
-            alert('Оплата картой скоро. Пакеты: ' + (d.packs || []).map(p => p.id + '=' + p.credits).join(', '));
-          };
-        }
-      } catch (_) {}
+      } catch (_) {
+        renderPacks([
+          { id: 'pack10', name: '10 кредитов', credits: 10, price_rub: 199 },
+          { id: 'pack100', name: '100 кредитов', credits: 100, price_rub: 699 },
+        ], 'coming_soon');
+      }
       await loadVoices();
     })();
 
