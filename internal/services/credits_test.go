@@ -31,7 +31,7 @@ func TestCreditSpendAtomic(t *testing.T) {
 	if err := c.Spend(uid, 1); err != nil {
 		t.Fatal(err)
 	}
-	if c.Balance(uid) != 2 {
+	if c.Balance(uid) != FreeCredits-1 {
 		t.Fatalf("balance %d", c.Balance(uid))
 	}
 	var wg sync.WaitGroup
@@ -53,7 +53,8 @@ func TestCreditSpendAtomic(t *testing.T) {
 			fail++
 		}
 	}
-	if ok != 2 || fail != 18 {
+	wantOK := FreeCredits - 1
+	if ok != wantOK || fail != 20-wantOK {
 		t.Fatalf("ok=%d fail=%d bal=%d", ok, fail, c.Balance(uid))
 	}
 	if c.Balance(uid) != 0 {
@@ -67,7 +68,7 @@ func TestCreditRefund(t *testing.T) {
 	uid := "refund-u"
 	_ = c.Spend(uid, 1)
 	c.Refund(uid, 1)
-	if c.Balance(uid) != 3 {
-		t.Fatalf("after refund want 3, got %d", c.Balance(uid))
+	if c.Balance(uid) != FreeCredits {
+		t.Fatalf("after refund want %d, got %d", FreeCredits, c.Balance(uid))
 	}
 }

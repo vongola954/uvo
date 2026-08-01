@@ -50,7 +50,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.7.0"
+		d.Version = "2.7.1"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -84,6 +84,8 @@ func Register(r *gin.Engine, d *Deps) {
 			"dev_auth":       os.Getenv("DEV_AUTH") == "true",
 			"demo_topup":     os.Getenv("DEMO_TOPUP") == "true",
 			"web_public_url": d.Cfg.WebPublicURL,
+			"dual_policy":    "off",
+			"yookassa":       d.Yoo != nil && d.Yoo.Enabled(),
 			"hint":           "При provider_balance_empty пополните https://platform.acedata.cloud · вход в веб: MAX /login",
 		})
 	})
@@ -95,6 +97,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
 	r.POST("/api/payments/yookassa", d.yooWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
+	r.GET("/tracks/:id/download", d.downloadTrack)
 	r.GET("/tracks/:id/instrumental", d.playInstrumental)
 	r.GET("/tracks/:id/vocals", d.playVocals)
 	r.GET("/tracks/:id/video", d.playVideo)
@@ -244,6 +247,42 @@ func (d *Deps) playTrack(c *gin.Context) {
 		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
 		return
 	}
+	c.File(safe)
+}
+
+// downloadTrack serves mp3 as attachment. Auth owner/public OR valid short-TTL sig.
+func (d *Deps) downloadTrack(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	track, err := d.Tracks.GetByID(uint(id))
+	if err != nil || track == nil {
+		middleware.AbortJSON(c, 404, "not_found", "not found")
+		return
+	}
+	secret := ""
+	if d.Cfg != nil {
+		secret = d.Cfg.JWTSecret
+	}
+	signedOK := secret != "" && services.VerifyTrackDownloadSig(uint(id), secret, c.Query("exp"), c.Query("sig"))
+	uid := middleware.UserID(c)
+	allowed := track.IsPublic || (uid != "" && track.UserID == uid) || signedOK
+	if !allowed {
+		if uid == "" && !signedOK {
+			middleware.AbortJSON(c, 401, "unauthorized", "Bearer token or signed download link required")
+			return
+		}
+		middleware.AbortJSON(c, 403, "forbidden", "not your track")
+		return
+	}
+	safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, track.FilePath)
+	if err != nil {
+		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
+		return
+	}
+	name := filepath.Base(safe)
+	if name == "" || name == "." {
+		name = fmt.Sprintf("track-%d.mp3", id)
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	c.File(safe)
 }
 

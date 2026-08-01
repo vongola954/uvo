@@ -65,3 +65,27 @@ func mediaHMAC(name string, exp int64, secret string) string {
 	_, _ = mac.Write([]byte(fmt.Sprintf("%s|%d", name, exp)))
 	return hex.EncodeToString(mac.Sum(nil))
 }
+
+const trackDownloadTTL = time.Hour
+
+// TrackDownloadResource is the HMAC subject for signed track downloads.
+func TrackDownloadResource(trackID uint) string {
+	return fmt.Sprintf("track:%d", trackID)
+}
+
+// SignTrackDownloadURL builds /tracks/{id}/download?exp=&sig= (TTL 1h).
+// If JWT_SECRET empty, returns unsigned path (dev only).
+func SignTrackDownloadURL(trackID uint, secret string) string {
+	path := fmt.Sprintf("/tracks/%d/download", trackID)
+	if secret == "" {
+		return path
+	}
+	exp := time.Now().Add(trackDownloadTTL).Unix()
+	sig := mediaHMAC(TrackDownloadResource(trackID), exp, secret)
+	return fmt.Sprintf("%s?exp=%d&sig=%s", path, exp, sig)
+}
+
+// VerifyTrackDownloadSig checks signed download query params.
+func VerifyTrackDownloadSig(trackID uint, secret, expStr, sig string) bool {
+	return VerifyMediaSig(TrackDownloadResource(trackID), secret, expStr, sig)
+}

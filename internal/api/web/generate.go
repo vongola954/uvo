@@ -18,7 +18,8 @@ func (d *Deps) Generate(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Prompt       string `json:"prompt" binding:"required"`
+		Mode         string `json:"mode"` // idea | lyrics | instrumental
+		Prompt       string `json:"prompt"`
 		Style        string `json:"style"`
 		Lyrics       string `json:"lyrics"`
 		Duration     int    `json:"duration"`
@@ -32,7 +33,11 @@ func (d *Deps) Generate(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
-	if err := services.ValidateGenerate(req.Prompt, req.Style, req.Lyrics, req.Duration, req.Instrumental); err != nil {
+	mode := services.NormalizeGenerateMode(req.Mode, req.Instrumental)
+	if mode == "instrumental" {
+		req.Instrumental = true
+	}
+	if err := services.ValidateGenerateMode(mode, req.Prompt, req.Style, req.Lyrics, req.Duration, req.Instrumental); err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
@@ -82,10 +87,16 @@ func (d *Deps) Generate(c *gin.Context) {
 			return
 		}
 		middleware.IncGenOK()
+		play := fmt.Sprintf("/tracks/%d/play", track.ID)
+		secret := ""
+		if d.Cfg != nil {
+			secret = d.Cfg.JWTSecret
+		}
+		dl := services.SignTrackDownloadURL(track.ID, secret)
 		c.JSON(200, gin.H{
 			"success": true, "track_id": track.ID, "title": track.Title,
-			"duration": track.Duration, "play_url": fmt.Sprintf("/tracks/%d/play", track.ID),
-			"balance": d.Credits.Balance(uid),
+			"duration": track.Duration, "play_url": play, "download_url": dl,
+			"mode": mode, "balance": d.Credits.Balance(uid),
 		})
 		return
 	}
@@ -104,6 +115,7 @@ func (d *Deps) Generate(c *gin.Context) {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	d.Jobs.SetCreditsSpent(job.ID, 1)
 	if err := d.Limiter.Allow(uid); err != nil {
 		d.Credits.Refund(uid, 1)
 		d.Jobs.Delete(job.ID)
@@ -113,9 +125,14 @@ func (d *Deps) Generate(c *gin.Context) {
 
 	services.GoLimited(func() {
 		jobID, userID := job.ID, uid
+		secret := ""
+		if d.Cfg != nil {
+			secret = d.Cfg.JWTSecret
+		}
 		if !d.Jobs.ClaimProcessing(jobID) {
 			// Lost CAS — do not run provider; refund the credit we took as owner.
 			d.Credits.Refund(userID, 1)
+			d.Jobs.MarkFailedRefunded(jobID, "lost claim")
 			return
 		}
 		track, err := d.Gen.Generate(genReq)
@@ -126,6 +143,7 @@ func (d *Deps) Generate(c *gin.Context) {
 			d.Jobs.Update(jobID, func(j *models.JobRecord) {
 				j.Status = string(services.JobFailed)
 				j.Error = msg
+				j.Refunded = true
 			})
 			return
 		}
@@ -136,10 +154,11 @@ func (d *Deps) Generate(c *gin.Context) {
 			j.Title = track.Title
 			j.Duration = track.Duration
 			j.PlayURL = fmt.Sprintf("/tracks/%d/play", track.ID)
+			j.DownloadURL = services.SignTrackDownloadURL(track.ID, secret)
 		})
 	})
 
-	c.JSON(202, gin.H{"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID})
+	c.JSON(202, gin.H{"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "mode": mode})
 }
 
 func (d *Deps) GetJob(c *gin.Context) {
@@ -152,6 +171,9 @@ func (d *Deps) GetJob(c *gin.Context) {
 	if j.UserID != uid {
 		c.JSON(404, gin.H{"error": "not found"})
 		return
+	}
+	if j.Status == string(services.JobDone) && j.TrackID > 0 && d.Cfg != nil {
+		j.DownloadURL = services.SignTrackDownloadURL(j.TrackID, d.Cfg.JWTSecret)
 	}
 	c.JSON(200, j)
 }

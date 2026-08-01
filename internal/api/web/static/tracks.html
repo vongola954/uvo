@@ -136,7 +136,8 @@ async function load() {
       mk(pub ? 'Сделать приватным' : 'Сделать публичным', () => setPublic(id, !pub).catch(e => alert(e.message)));
       mk('В ленту', () => shareFeed(id));
       mk('Правка (−1)', () => editTrack(id, title));
-      mk('Караоке (−2)', () => { location.href = '/karaoke.html?id=' + id; });
+      mk('Минусовка / караоке (−2)', () => { location.href = '/karaoke.html?id=' + id; });
+      mk('Скачать mp3', () => { location.href = '/tracks/' + id + '/download'; });
       mk('Портрет', () => openPortrait(id));
       card.appendChild(actions);
       el.appendChild(card);

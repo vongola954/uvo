@@ -14,6 +14,24 @@ func TestValidateGenerate(t *testing.T) {
 	}
 }
 
+func TestValidateGenerateMode(t *testing.T) {
+	if err := ValidateGenerateMode("lyrics", "", "Pop", "", 180, false); err == nil {
+		t.Fatal("lyrics mode needs lyrics")
+	}
+	if err := ValidateGenerateMode("lyrics", "", "Pop", "verse one", 180, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateGenerateMode("instrumental", "", "", "", 180, true); err == nil {
+		t.Fatal("instrumental needs prompt or style")
+	}
+	if err := ValidateGenerateMode("instrumental", "lofi chill", "", "", 180, true); err != nil {
+		t.Fatal(err)
+	}
+	if NormalizeGenerateMode("", true) != "instrumental" {
+		t.Fatal("normalize instrumental")
+	}
+}
+
 func TestLooksLikeAudio(t *testing.T) {
 	if LooksLikeAudio([]byte("not audio!!")) {
 		t.Fatal("junk")

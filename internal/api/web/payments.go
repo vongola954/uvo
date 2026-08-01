@@ -30,11 +30,14 @@ func (d *Deps) getCredits(c *gin.Context) {
 		note = "Демо-пополнение (DEMO_TOPUP=true), без реальных денег."
 	}
 	c.JSON(200, gin.H{
-		"balance":    d.Credits.Balance(uid),
-		"packs":      services.CreditPacks,
-		"demo_topup": demo,
-		"payment":    pay,
-		"note":       note,
+		"balance":      d.Credits.Balance(uid),
+		"packs":        services.PacksPublic(),
+		"free_credits": services.FreeCredits,
+		"credit_hint":  "1 кредит = 1 песня (генерация). Кавер/караоке/клон — 2.",
+		"dual_policy":  "off", // see COST.md — enable only after AceData margin ≥40%
+		"demo_topup":   demo,
+		"payment":      pay,
+		"note":         note,
 	})
 }
 

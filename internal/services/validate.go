@@ -6,11 +6,44 @@ import (
 	"unicode/utf8"
 )
 
-func ValidateGenerate(prompt, style, lyrics string, duration int, instrumental bool) error {
-	prompt = strings.TrimSpace(prompt)
-	if !instrumental && prompt == "" && strings.TrimSpace(lyrics) == "" {
-		return fmt.Errorf("нужен prompt или lyrics")
+// NormalizeGenerateMode maps UI mode → idea | lyrics | instrumental.
+func NormalizeGenerateMode(mode string, instrumental bool) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "idea", "lyrics", "instrumental":
+		return mode
 	}
+	if instrumental {
+		return "instrumental"
+	}
+	return "idea"
+}
+
+func ValidateGenerate(prompt, style, lyrics string, duration int, instrumental bool) error {
+	return ValidateGenerateMode("", prompt, style, lyrics, duration, instrumental)
+}
+
+func ValidateGenerateMode(mode, prompt, style, lyrics string, duration int, instrumental bool) error {
+	mode = NormalizeGenerateMode(mode, instrumental)
+	prompt = strings.TrimSpace(prompt)
+	lyrics = strings.TrimSpace(lyrics)
+	style = strings.TrimSpace(style)
+
+	switch mode {
+	case "instrumental":
+		if prompt == "" && style == "" {
+			return fmt.Errorf("для инструментала нужен prompt или style")
+		}
+	case "lyrics":
+		if lyrics == "" {
+			return fmt.Errorf("режим «свой текст»: укажите lyrics")
+		}
+	default: // idea
+		if prompt == "" && lyrics == "" {
+			return fmt.Errorf("нужен prompt или lyrics")
+		}
+	}
+
 	if utf8.RuneCountInString(prompt) > 500 {
 		return fmt.Errorf("prompt максимум 500 символов")
 	}

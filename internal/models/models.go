@@ -133,24 +133,27 @@ type Referral struct {
 type CreditBalance struct {
 	ID        uint   `gorm:"primaryKey"`
 	UserID    string `gorm:"unique;not null;index"`
-	Balance   int    `gorm:"default:3"`
+	Balance   int    `gorm:"default:2"`
 	UpdatedAt time.Time
 }
 
 
 type JobRecord struct {
-	ID        string `gorm:"primaryKey"`
-	UserID    string `gorm:"index"`
-	Status    string `gorm:"index"`
-	Error     string
-	TrackID   uint
-	Title     string
-	PlayURL   string
-	Duration  int
-	RequestID string    `gorm:"index"` // client idempotency id (may be empty)
-	IdemKey   string    `gorm:"uniqueIndex;not null"` // user|requestID or job id
-	CreatedAt time.Time `gorm:"index"`
-	UpdatedAt time.Time
+	ID           string `gorm:"primaryKey"`
+	UserID       string `gorm:"index"`
+	Status       string `gorm:"index"`
+	Error        string
+	TrackID      uint
+	Title        string
+	PlayURL      string
+	DownloadURL  string // signed short-TTL download when available
+	Duration     int
+	CreditsSpent int  `gorm:"default:0"`
+	Refunded     bool `gorm:"default:false;index"`
+	RequestID    string    `gorm:"index"` // client idempotency id (may be empty)
+	IdemKey      string    `gorm:"uniqueIndex;not null"` // user|requestID or job id
+	CreatedAt    time.Time `gorm:"index"`
+	UpdatedAt    time.Time
 }
 
 // PaymentOrder tracks YooKassa (or demo) credit purchases.

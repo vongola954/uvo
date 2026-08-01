@@ -8,13 +8,16 @@ import (
 	"uvo/internal/models"
 )
 
+// FreeCredits is the new-user grant (shown in pricing as «≈N песен»).
+const FreeCredits = 2
+
 type CreditService struct {
 	db   *gorm.DB
 	free int
 }
 
 func NewCreditService(db *gorm.DB) *CreditService {
-	return &CreditService{db: db, free: 3}
+	return &CreditService{db: db, free: FreeCredits}
 }
 
 func (c *CreditService) ensure(userID string) (*models.CreditBalance, error) {
@@ -90,19 +93,47 @@ func (c *CreditService) SpendTx(tx *gorm.DB, userID string, n int) error {
 	return tx.Model(&row).Update("balance", row.Balance-n).Error
 }
 
-var CreditPacks = []map[string]interface{}{
-	{"id": "pack10", "name": "10 кредитов", "credits": 10, "price_rub": 199},
-	{"id": "pack30", "name": "30 кредитов", "credits": 30, "price_rub": 499},
-	{"id": "pack100", "name": "100 кредитов", "credits": 100, "price_rub": 699},
-	{"id": "pack500", "name": "500 кредитов", "credits": 500, "price_rub": 1690},
-	{"id": "pack2000", "name": "2000 кредитов", "credits": 2000, "price_rub": 5990},
+// CreditPack is a purchasable credit bundle.
+type CreditPack struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Credits    int    `json:"credits"`
+	PriceRub   int    `json:"price_rub"`
+	RubPerSong float64 `json:"rub_per_song"` // price/credits at 1 credit = 1 song
+	Featured   bool   `json:"featured,omitempty"`
+	Badge      string `json:"badge,omitempty"`
+}
+
+var CreditPacks = []CreditPack{
+	{ID: "pack5", Name: "Старт · 5 песен", Credits: 5, PriceRub: 99, Featured: true, Badge: "вход"},
+	{ID: "pack10", Name: "10 кредитов", Credits: 10, PriceRub: 199},
+	{ID: "pack30", Name: "30 кредитов", Credits: 30, PriceRub: 499},
+	{ID: "pack100", Name: "100 кредитов", Credits: 100, PriceRub: 699, Badge: "выгодно"},
+	{ID: "pack500", Name: "500 кредитов", Credits: 500, PriceRub: 1690},
+	{ID: "pack2000", Name: "2000 кредитов", Credits: 2000, PriceRub: 5990},
+}
+
+func init() {
+	for i := range CreditPacks {
+		p := &CreditPacks[i]
+		if p.Credits > 0 {
+			p.RubPerSong = float64(p.PriceRub) / float64(p.Credits)
+		}
+	}
+}
+
+// PacksPublic returns packs with computed ₽/песня for API/UI.
+func PacksPublic() []CreditPack {
+	out := make([]CreditPack, len(CreditPacks))
+	copy(out, CreditPacks)
+	return out
 }
 
 // PackByID returns credits and price for a known pack.
 func PackByID(id string) (credits, priceRub int, name string, ok bool) {
 	for _, p := range CreditPacks {
-		if p["id"] == id {
-			return p["credits"].(int), p["price_rub"].(int), p["name"].(string), true
+		if p.ID == id {
+			return p.Credits, p.PriceRub, p.Name, true
 		}
 	}
 	return 0, 0, "", false

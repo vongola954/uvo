@@ -226,10 +226,17 @@
 
         <div id="panel-gen">
         <div id="preset-chips" class="flex flex-wrap gap-2 mb-4"></div>
+        <div class="flex gap-2 mb-4 text-xs font-semibold" id="gen-modes">
+          <button type="button" data-mode="idea" class="gen-mode px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Идея</button>
+          <button type="button" data-mode="lyrics" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Свой текст</button>
+          <button type="button" data-mode="instrumental" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Instrumental</button>
+        </div>
+        <p id="mode-hint" class="text-xs text-zinc-500 mb-4">Опишите настроение и звук — Suno напишет трек. −1 кредит ≈ 1 песня.</p>
         <form id="gen-form" class="space-y-4">
-          <div>
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Промпт</label>
-            <textarea id="prompt" rows="3" required placeholder="ночной synth-pop, женский вокал, город после дождя"></textarea>
+          <input type="hidden" id="gen-mode" value="idea">
+          <div id="field-prompt">
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2" id="prompt-label">Промпт</label>
+            <textarea id="prompt" rows="3" placeholder="ночной synth-pop, женский вокал, город после дождя"></textarea>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
@@ -249,16 +256,13 @@
             <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
             <select id="voice_id"><option value="">По умолчанию Suno</option></select>
           </div>
-          <div>
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стихи</label>
-            <textarea id="lyrics" rows="2" placeholder="Опционально"></textarea>
+          <div id="field-lyrics">
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2" id="lyrics-label">Стихи</label>
+            <textarea id="lyrics" rows="3" placeholder="Опционально — или переключитесь в «Свой текст»"></textarea>
           </div>
-          <label class="flex items-center gap-3 text-sm text-zinc-400 cursor-pointer select-none">
-            <input type="checkbox" id="instrumental" class="w-4 h-4 accent-emerald-500 rounded">
-            Только инструментал
-          </label>
+          <input type="hidden" id="instrumental" value="0">
           <button type="submit" id="btn-gen" class="btn-primary w-full py-4 rounded-2xl font-bold tracking-wide">
-            GENERATE
+            GENERATE · −1
           </button>
         </form>
         </div>
@@ -317,8 +321,9 @@
           <div class="player-card rounded-2xl p-5">
             <p id="track-title" class="font-semibold text-emerald-400 mb-3 text-sm"></p>
             <audio id="player" controls class="w-full"></audio>
-            <div class="flex gap-2 mt-4">
-              <a id="dl-link" href="#" download class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать</a>
+            <div class="flex flex-wrap gap-2 mt-4">
+              <a id="dl-link" href="#" download class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать mp3</a>
+              <a id="stems-link" href="/tracks.html" class="btn-ghost text-xs px-4 py-2 rounded-xl">Минусовка (−2)</a>
               <button type="button" id="btn-close-result" class="btn-ghost text-xs px-4 py-2 rounded-xl">Закрыть</button>
             </div>
           </div>
@@ -374,7 +379,7 @@
     <section id="pricing" class="px-5 pb-20">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold text-center mb-3">Кредиты</h2>
-        <p id="pricing-lead" class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">3 кредита при старте. Оплата картой — ЮKassa (если ключи заданы на сервере).</p>
+        <p id="pricing-lead" class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">2 песни в подарок. 1 кредит = 1 песня. Входной пакет от 99 ₽. ЮKassa — когда ключи на сервере.</p>
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" id="packs-grid"></div>
         <div class="mt-4 flex flex-wrap gap-2 justify-center">
           <button type="button" id="btn-demo-topup" class="btn-ghost px-4 py-2 rounded-xl text-sm hidden">Демо +10</button>
@@ -392,12 +397,52 @@
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
+    let genMode = 'idea';
+    function setGenMode(mode) {
+      genMode = mode === 'lyrics' || mode === 'instrumental' ? mode : 'idea';
+      const hidden = document.getElementById('gen-mode');
+      if (hidden) hidden.value = genMode;
+      const inst = document.getElementById('instrumental');
+      if (inst) inst.value = genMode === 'instrumental' ? '1' : '0';
+      document.querySelectorAll('.gen-mode').forEach((b) => {
+        const on = b.getAttribute('data-mode') === genMode;
+        b.className = 'gen-mode px-3 py-2 rounded-xl border ' + (on
+          ? 'border-emerald-500/50 text-emerald-400'
+          : 'border-white/10 text-zinc-400');
+      });
+      const hint = document.getElementById('mode-hint');
+      const lyricsLab = document.getElementById('lyrics-label');
+      const promptLab = document.getElementById('prompt-label');
+      const fieldLyrics = document.getElementById('field-lyrics');
+      if (genMode === 'lyrics') {
+        if (hint) hint.textContent = 'Вставьте свои стихи — стиль и голос опционально. −1 кредит.';
+        if (lyricsLab) lyricsLab.textContent = 'Стихи (обязательно)';
+        if (promptLab) promptLab.textContent = 'Промпт / настроение (опц.)';
+        if (fieldLyrics) fieldLyrics.classList.remove('hidden');
+      } else if (genMode === 'instrumental') {
+        if (hint) hint.textContent = 'Только минус без вокала. Нужен промпт или стиль. −1 кредит.';
+        if (lyricsLab) lyricsLab.textContent = 'Стихи';
+        if (promptLab) promptLab.textContent = 'Промпт / настроение';
+        if (fieldLyrics) fieldLyrics.classList.add('hidden');
+      } else {
+        if (hint) hint.textContent = 'Опишите настроение и звук — Suno напишет трек. −1 кредит ≈ 1 песня.';
+        if (lyricsLab) lyricsLab.textContent = 'Стихи (опц.)';
+        if (promptLab) promptLab.textContent = 'Промпт';
+        if (fieldLyrics) fieldLyrics.classList.remove('hidden');
+      }
+    }
+    document.querySelectorAll('.gen-mode').forEach((b) => {
+      b.addEventListener('click', () => setGenMode(b.getAttribute('data-mode')));
+    });
+
     function applyPreset(p) {
       if (!p) return;
       const prompt = document.getElementById('prompt');
       const style = document.getElementById('style');
       const lyrics = document.getElementById('lyrics');
-      const instrumental = document.getElementById('instrumental');
+      if (p.instrumental) setGenMode('instrumental');
+      else if (p.lyrics_hint && !p.prompt) setGenMode('lyrics');
+      else setGenMode('idea');
       if (prompt) prompt.value = p.prompt || '';
       if (style && p.style) {
         let found = false;
@@ -410,7 +455,6 @@
         style.value = p.style;
       }
       if (lyrics && p.lyrics_hint) lyrics.value = p.lyrics_hint;
-      if (instrumental) instrumental.checked = !!p.instrumental;
       document.getElementById('generate')?.scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -513,22 +557,26 @@
       }
     }
 
-    function renderPacks(packs, payment) {
+    function renderPacks(packs, payment, freeCredits) {
       const grid = document.getElementById('packs-grid');
       if (!grid) return;
       grid.textContent = '';
+      const nFree = freeCredits || 2;
       const free = UVO.el('div', { className: 'glass p-6 text-center' }, [
-        UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: 'Старт' }),
+        UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: 'Подарок' }),
         UVO.el('p', { className: 'text-3xl font-black mb-4', text: '0 ₽' }),
         UVO.el('ul', { className: 'text-sm text-zinc-400 space-y-2 mb-6 text-left' }, [
-          UVO.el('li', { text: '✓ 3 кредита при старте' }),
+          UVO.el('li', { text: '✓ ' + nFree + ' песни при старте' }),
+          UVO.el('li', { text: '✓ 1 кредит = 1 песня' }),
           UVO.el('li', { text: '✓ Студия + MAX /login' }),
-          UVO.el('li', { text: '✓ Караоке и кавер' }),
         ]),
         UVO.el('a', { href: '#generate', className: 'btn-ghost block w-full py-2.5 rounded-xl text-sm', text: 'Начать' }),
       ]);
       grid.appendChild(free);
       (packs || []).forEach((p) => {
+        const per = (p.rub_per_song != null)
+          ? Math.round(p.rub_per_song)
+          : (p.credits ? Math.round((p.price_rub || 0) / p.credits) : 0);
         const btn = UVO.el('button', {
           type: 'button',
           className: 'btn-primary block w-full py-2.5 rounded-xl text-sm font-bold',
@@ -569,13 +617,16 @@
             alert('Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY на сервере Amvera, webhook: /api/payments/yookassa');
           },
         });
+        const badge = p.badge || (p.featured ? 'вход' : '');
         grid.appendChild(UVO.el('div', {
-          className: 'glass p-6 text-center',
-          style: p.credits >= 100 ? 'border-color:rgba(52,211,153,0.35)' : '',
+          className: 'glass p-6 text-center relative',
+          style: (p.featured || p.credits >= 100) ? 'border-color:rgba(52,211,153,0.35)' : '',
         }, [
+          badge ? UVO.el('p', { className: 'text-[10px] uppercase tracking-wider text-emerald-400 mb-1', text: badge }) : UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: ' ' }),
           UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: p.name || p.id }),
-          UVO.el('p', { className: 'text-3xl font-black mb-2', text: (p.price_rub || 0) + ' ₽' }),
-          UVO.el('p', { className: 'text-sm text-zinc-400 mb-6', text: (p.credits || 0) + ' кредитов' }),
+          UVO.el('p', { className: 'text-3xl font-black mb-1', text: (p.price_rub || 0) + ' ₽' }),
+          UVO.el('p', { className: 'text-sm text-zinc-400 mb-1', text: (p.credits || 0) + ' песен' }),
+          UVO.el('p', { className: 'text-xs text-zinc-600 mb-6', text: per ? ('≈ ' + per + ' ₽ / песня') : '' }),
           btn,
         ]));
       });
@@ -605,8 +656,11 @@
         const lead = document.getElementById('pricing-lead');
         if (r.ok) {
           if (note) note.textContent = d.note || '';
-          if (lead && d.payment === 'yookassa') lead.textContent = 'Оплата картой через ЮKassa. Кредиты зачисляются после успешного платежа.';
-          renderPacks(d.packs || [], d.payment || 'coming_soon');
+          if (lead) {
+            if (d.payment === 'yookassa') lead.textContent = 'Оплата картой через ЮKassa. 1 кредит = 1 песня. Кредиты после succeeded.';
+            else if (d.credit_hint) lead.textContent = (d.free_credits || 2) + ' песни в подарок. ' + d.credit_hint + (d.payment === 'demo' ? ' Демо-пополнение включено.' : ' Карта — после YOOKASSA_* на Amvera.');
+          }
+          renderPacks(d.packs || [], d.payment || 'coming_soon', d.free_credits);
         }
         const demoBtn = document.getElementById('btn-demo-topup');
         if (demoBtn && d.demo_topup) {
@@ -627,10 +681,12 @@
         }
       } catch (_) {
         renderPacks([
-          { id: 'pack10', name: '10 кредитов', credits: 10, price_rub: 199 },
-          { id: 'pack100', name: '100 кредитов', credits: 100, price_rub: 699 },
-        ], 'coming_soon');
+          { id: 'pack5', name: 'Старт · 5 песен', credits: 5, price_rub: 99, featured: true, badge: 'вход', rub_per_song: 19.8 },
+          { id: 'pack10', name: '10 кредитов', credits: 10, price_rub: 199, rub_per_song: 19.9 },
+          { id: 'pack100', name: '100 кредитов', credits: 100, price_rub: 699, rub_per_song: 7, badge: 'выгодно' },
+        ], 'coming_soon', 2);
       }
+      setGenMode('idea');
       await loadVoices();
     })();
 
@@ -815,14 +871,26 @@
       btn.innerHTML = '<span class="spinner"></span>Генерация...';
       const stopProgress = animateProgress();
 
+      const mode = document.getElementById('gen-mode')?.value || genMode || 'idea';
       const body = {
+        mode,
         prompt: document.getElementById('prompt').value,
         style: document.getElementById('style').value,
         lyrics: document.getElementById('lyrics').value,
         duration: parseInt(document.getElementById('duration').value) || 180,
-        instrumental: document.getElementById('instrumental').checked,
-        voice_id: document.getElementById('voice_id').value || undefined
+        instrumental: mode === 'instrumental' || document.getElementById('instrumental').value === '1',
+        voice_id: document.getElementById('voice_id').value || undefined,
+        request_id: (crypto.randomUUID && crypto.randomUUID()) || ('r-' + Date.now() + '-' + Math.random().toString(16).slice(2)),
       };
+
+      function showResult(playUrl, title, duration, downloadUrl, trackId) {
+        document.getElementById('player').src = playUrl;
+        document.getElementById('track-title').textContent = (title || 'Трек') + ' · ' + (duration || '?') + 's';
+        document.getElementById('dl-link').href = downloadUrl || playUrl;
+        const stems = document.getElementById('stems-link');
+        if (stems && trackId) stems.href = '/karaoke.html?id=' + trackId;
+        result.classList.remove('hidden');
+      }
 
       try {
         await UVO.ensureDevToken();
@@ -843,10 +911,7 @@
             const job = await jobRes.json();
             if (job.status === 'done') {
               stopProgress();
-              document.getElementById('player').src = job.play_url;
-              document.getElementById('track-title').textContent = (job.title || 'Трек') + ' · ' + (job.duration || '?') + 's';
-              document.getElementById('dl-link').href = job.play_url;
-              result.classList.remove('hidden');
+              showResult(job.play_url, job.title, job.duration, job.download_url || job.DownloadURL, job.track_id || job.TrackID);
               done = true;
             } else if (job.status === 'failed') {
               throw new Error(job.error || 'fail');
@@ -854,10 +919,7 @@
           }
         } else {
           stopProgress();
-          document.getElementById('player').src = data.play_url;
-          document.getElementById('track-title').textContent = (data.title || 'Трек') + ' · ' + (data.duration || '?') + 's';
-          document.getElementById('dl-link').href = data.play_url;
-          result.classList.remove('hidden');
+          showResult(data.play_url, data.title, data.duration, data.download_url, data.track_id);
         }
         try {
           const cr = await UVO.api('/api/credits');
@@ -872,7 +934,7 @@
       } finally {
         btn.disabled = false;
         btn.classList.remove('opacity-80');
-        btn.innerHTML = 'GENERATE';
+        btn.innerHTML = 'GENERATE · −1';
       }
     });
   </script>

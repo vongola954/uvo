@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -111,5 +112,41 @@ func TestDeletePendingAfterSpendFail(t *testing.T) {
 	}
 	if j2.ID == j.ID {
 		t.Fatal("expected new id")
+	}
+}
+
+func TestFailStaleAndRefund(t *testing.T) {
+	db := jobsTestDB(t)
+	if err := db.AutoMigrate(&models.CreditBalance{}); err != nil {
+		t.Fatal(err)
+	}
+	s := NewJobStore(db)
+	credits := NewCreditService(db)
+	uid := "stale-u"
+	_ = credits.Spend(uid, 1) // leave FreeCredits-1
+	j, _ := s.CreateOrClaim(uid, "stale-1")
+	s.SetCreditsSpent(j.ID, 1)
+	// backdate updated_at
+	past := time.Now().Add(-20 * time.Minute)
+	_ = db.Model(&models.JobRecord{}).Where("id = ?", j.ID).
+		Updates(map[string]interface{}{"updated_at": past, "created_at": past}).Error
+
+	n := s.FailStaleAndRefund(15*time.Minute, credits)
+	if n != 1 {
+		t.Fatalf("want 1 refund, got %d", n)
+	}
+	got, ok := s.Get(j.ID)
+	if !ok || got.Status != JobFailed || !got.Refunded {
+		t.Fatalf("job=%+v", got)
+	}
+	if credits.Balance(uid) != FreeCredits {
+		t.Fatalf("balance want %d got %d", FreeCredits, credits.Balance(uid))
+	}
+	// second pass no double refund
+	if s.FailStaleAndRefund(15*time.Minute, credits) != 0 {
+		t.Fatal("double refund")
+	}
+	if credits.Balance(uid) != FreeCredits {
+		t.Fatal("balance changed on second pass")
 	}
 }

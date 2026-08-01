@@ -124,3 +124,64 @@ func (s *JobStore) CleanupOlderThan(age time.Duration) (int64, error) {
 		Delete(&models.JobRecord{})
 	return res.RowsAffected, res.Error
 }
+
+const DefaultStaleJobAge = 15 * time.Minute
+
+// SetCreditsSpent records how many credits were taken for this job (for refunds).
+func (s *JobStore) SetCreditsSpent(id string, n int) {
+	if n <= 0 {
+		return
+	}
+	_ = s.db.Model(&models.JobRecord{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"credits_spent": n, "updated_at": time.Now()}).Error
+}
+
+// MarkFailedRefunded CAS-fails a job and marks credits as already refunded (avoids double refund).
+func (s *JobStore) MarkFailedRefunded(id, errMsg string) {
+	_ = s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND refunded = ?", id, false).
+		Updates(map[string]interface{}{
+			"status":     JobFailed,
+			"error":      errMsg,
+			"refunded":   true,
+			"updated_at": time.Now(),
+		}).Error
+}
+
+// FailStaleAndRefund fails pending/processing jobs older than age and refunds CreditsSpent.
+// Returns number of jobs refunded. Safe under concurrent workers (CAS on status+refunded).
+func (s *JobStore) FailStaleAndRefund(age time.Duration, credits *CreditService) int {
+	if age <= 0 {
+		age = DefaultStaleJobAge
+	}
+	if credits == nil {
+		return 0
+	}
+	cut := time.Now().Add(-age)
+	var list []models.JobRecord
+	if err := s.db.Where("status IN ? AND updated_at < ? AND refunded = ?",
+		[]string{JobPending, JobProcessing}, cut, false).Find(&list).Error; err != nil {
+		return 0
+	}
+	n := 0
+	for _, j := range list {
+		res := s.db.Model(&models.JobRecord{}).
+			Where("id = ? AND status IN ? AND refunded = ?", j.ID, []string{JobPending, JobProcessing}, false).
+			Updates(map[string]interface{}{
+				"status":     JobFailed,
+				"error":      "timeout: генерация не завершилась вовремя, кредиты возвращены",
+				"refunded":   true,
+				"updated_at": time.Now(),
+			})
+		if res.Error != nil || res.RowsAffected != 1 {
+			continue
+		}
+		spent := j.CreditsSpent
+		if spent <= 0 {
+			spent = 1 // legacy / race: create winner always spends 1 before worker
+		}
+		credits.Refund(j.UserID, spent)
+		n++
+	}
+	return n
+}
