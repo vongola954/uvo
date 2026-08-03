@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
@@ -106,6 +107,7 @@ func buildPostgresURL() string {
 		return ""
 	}
 	port := getEnv("PGPORT", "5432")
+	// Amvera managed Postgres (internal -rw host) expects disable; see deploy/AMVERA.md.
 	ssl := getEnv("PGSSLMODE", "disable")
 	u := url.URL{
 		Scheme: "postgres",
@@ -117,6 +119,20 @@ func buildPostgresURL() string {
 	q.Set("sslmode", ssl)
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+// WarnInsecurePostgresSSL logs when production uses sslmode=disable (Amvera internal is OK).
+func WarnInsecurePostgresSSL(cfg *Config) {
+	if cfg == nil || !cfg.IsProduction() {
+		return
+	}
+	if !strings.EqualFold(cfg.DBDriver, "postgres") && !strings.EqualFold(cfg.DBDriver, "postgresql") {
+		return
+	}
+	ssl := strings.ToLower(getEnv("PGSSLMODE", "disable"))
+	if ssl == "disable" || ssl == "allow" {
+		logrus.Warn("PGSSLMODE=", ssl, " — OK for Amvera internal CNPG; use require for public Postgres hosts")
+	}
 }
 
 func getEnv(key, defaultValue string) string {

@@ -1,161 +1,59 @@
-# Аудит UVO 2.6.3 — 2026-07-29
+# Аудит UVO 2.7.2 / 2.7.3 — 2026-08-03
 
-Жёсткий аудит после prod-hardening + эпох 12–13. Предыдущий (2.4.0 ≈ 5.5/10): см. ниже «Закрыто».
+Актуальный срез после epoch 12–14. Старые таблицы 2.6.x ниже как история закрытий.
 
-**Метод:** обзор auth/CSRF/ownership/SSRF/credits/webhook/upload/Docker/karaoke/portrait + live `/health`.  
-**Код:** `2.6.4` (эпохи 12–14: SSRF, cost, cookie login, signed uploads, header webhook).
+**Live prod:** `https://uvo-baskakovanton.amvera.io` · GitHub: `vongola954/uvo`
 
 ---
 
 ## Вердикт
 
-| Критерий | 2.4 | **2.6.1** | Комментарий |
-|----------|-----|-----------|-------------|
-| Архитектура | 7 | **7.5** | Слои ок; jobs без exclusive claim |
-| Безопасность | 5.5 | **7.0** | Fail-closed; SSRF redirect остаётся |
-| Надёжность | 6.5 | **6.5** | Atomic spend; idem↔credits race |
-| Тесты | 6 | **6.5** | CI; нет redirect / race / media authz |
-| Prod-ready | 5 | **7.0** | Guards + JWT + `/login`; root Docker |
-| Cost control | 5 | **7.0** | TTS/clone/karaoke/portrait + RL |
-
-**Итог: 6.8/10** — shipable MVP на Amvera при включённых guards.  
-До ~8.5: SSRF harden, claim→spend, cost controls, non-root, session cookie.  
-До ~10: payments, CSP, signed media, dual JWT rotation.
+| Ось | Score | Комментарий |
+|-----|------:|-------------|
+| Security (code) | **8.0** | GetPayment settle, HTTPS ignores `UVO_ALLOW_INSECURE`, slim health, metrics gated |
+| Security (ops) | **6.5** | Нет YOOKASSA_* / METRICS_TOKEN на проде |
+| Reliability | **7.5** | Stale refund, claim→spend, SettlePaymentCAS |
+| Product | **6.0** | Студия сильная; money/GTM off |
+| **Overall code** | **7.8–8.0** | Shipable; блокер — ключи и канал |
 
 ```
-Код + prod_guards ON ───► ~6.8–7
-UVO_ALLOW_INSECURE=true ► ~3–4 (открытый demo снова)
+2.7.2+ на Amvera + prod_guards ──► ~7.8
+Без YooKassa keys                 ► продукт без выручки
+UVO_ALLOW_INSECURE на HTTPS       ► игнорируется (closed)
 ```
 
 ---
 
-## Закрыто в 2.6.1
+## Закрыто (2.6.2 → 2.7.3)
 
-| Было | Сейчас |
-|------|--------|
-| Нет fail-closed | `ApplyProductionGuards` — force `ALLOW_ANON`/`DEV_AUTH`/`DEMO_TOPUP=false` |
-| Слабый JWT default | Durable `/data/jwt_secret`, reject weak |
-| Нет публичного URL | `WEB_PUBLIC_URL` в Docker + fallback |
-| Нет студийного входа без demo | MAX `/login` → JWT deep link 7d |
-
-Live подтверждено: `prod_guards:true`, флаги off, `web_public_url` set.
-
----
-
-## Критично (остаток)
-
-### C1. Локальный `.env` toxic
-`ALLOW_ANON`/`DEV_AUTH`/`DEMO_TOPUP=true` + живые ключи. Gitignored, но копипаст в Amvera или `UVO_ALLOW_INSECURE=true` снимает guards.
-
-**Действие:** не копировать demo-флаги в prod; пароль DB уже сменён — ок; при сомнении ротировать AceData/MAX/JWT/webhook.
-
-### C2. Escape hatch `UVO_ALLOW_INSECURE`
-Полностью отключает fail-closed (`prod.go`).
-
-**Фикс:** разрешать только non-HTTPS + loopback; иначе FATAL.
+| ID | Тема | Версия |
+|----|------|--------|
+| H1 | SSRF redirects | 2.6.2 |
+| H2 | Claim→spend | 2.6.2 |
+| H3–H7 | Cost / non-root / safe errors | 2.6.3 |
+| H8 | Webhook query secret | 2.6.4 |
+| C2 | `UVO_ALLOW_INSECURE` на public HTTPS | 2.7.2 |
+| Pay | YooKassa GetPayment + SettlePaymentCAS | 2.7.2 |
+| Ops | Slim `/health`, `/metrics` auth, uploads GC | 2.7.2 |
+| Pay+ | Optional `YOOKASSA_WEBHOOK_IPS` | 2.7.3 |
 
 ---
 
-## Высокий (P1) — рекомендации по реализации
+## Открыто (owner / ops)
 
-| ID | Находка | Где | Реализация |
-|----|---------|-----|------------|
-| ~~H1~~ | ~~SSRF через redirects~~ | **CLOSED 2.6.2** | `CheckRedirect` + dial reject private; тесты 302→link-local |
-| ~~H2~~ | ~~Spend до exclusive job claim~~ | **CLOSED 2.6.2** | `CreateOrClaim` → Spend; `ClaimProcessing` CAS; Refund на lost claim |
-| ~~H3~~ | ~~TTS без кредитов / RL~~ | **CLOSED 2.6.3** | Spend(1) + Limiter |
-| ~~H4~~ | ~~Voice clone soft quota TOCTOU~~ | **CLOSED 2.6.3** | reserveQuota atomic + Spend(2) + magic bytes |
-| ~~H5~~ | ~~Karaoke/portrait без gen RL~~ | **CLOSED 2.6.3** | Limiter на karaoke/portrait/edit |
-| ~~H6~~ | ~~Provider body клиенту~~ | **CLOSED 2.6.3** | writeProviderErr без raw err.Error() |
-| ~~H7~~ | ~~Docker root~~ | **CLOSED 2.6.3** | USER uvo (uid 10001) |
-| ~~H8~~ | ~~Webhook `?secret=`~~ | **CLOSED 2.6.4** | Только `X-Max-Bot-Api-Secret` |
+| Sev | Finding | Action |
+|-----|---------|--------|
+| HIGH | `yookassa:false` на проде | `YOOKASSA_SHOP_ID` + `SECRET` + webhook URL |
+| MED | COST.md AceData ₽ TBD | заполнить → dual go/no-go |
+| MED | Discover пустой | seed public tracks |
+| MED | PGSSLMODE=disable | OK для Amvera CNPG; `require` на публичном PG |
+| LOW | OPENAI / METRICS_TOKEN | опционально для lyrics + ops |
+| LOW | JWT iss/aud, CSP, TG-бот | backlog |
 
 ---
 
-## Средний (P2)
+## Не регрессировать
 
-| ID | Находка | Фикс |
-|----|---------|------|
-| ~~M1~~ | ~~`/media/assets` без auth~~ | **CLOSED 2.6.4** — RequireAuth (cookie/Bearer) |
-| M2 | `/uploads` без TTL cleanup | Cron delete 24–48h (signed TTL 48h есть) |
-| ~~M3~~ | ~~JWT в `?token=` 7d~~ | **CLOSED 2.6.4** — `?code=` 15m → HttpOnly cookie |
-| M4 | `PGSSLMODE` default `disable` | `require` для postgres |
-| ~~M5~~ | ~~CSRF `!=`, нет SameSite~~ | **CLOSED 2.6.4** — Strict + constant-time |
-| M6 | `deleteTrack` без `SafeMediaPath` | Resolve path перед `Remove` |
-| M7 | Открытые `/health` details + `/metrics` | Урезать публичный health; auth metrics |
-| M8 | Private play + Bearer из localStorage | Cookie / signed play URL |
-| M9 | Rate limit count-then-insert | Atomic upsert |
-| M10 | Нет CSP / security headers | Headers + self-host Tailwind |
-| M11 | Caption без лимита | Cap ~500 |
-| M12 | Hardcoded Amvera URL fallback | Fail если `WEB_PUBLIC_URL` пуст в prod |
+Fail-closed prod · SSRF · CSRF · signed media · MAX header webhook · non-root :8080 · stale 15m refund · modes/presets · pack5
 
----
-
-## Низкий (P3)
-
-- Sequential public track IDs (ожидаемо)
-- Access log может держать `?token=` / `?secret=`
-- JWT без `iss`/`aud` / dual-secret rotation
-- README version drift
-- `SpendTx` не используется; `Add` глотает ошибки
-- Payments: `coming_soon` (ожидаемо)
-
----
-
-## Что уже хорошо
-
-1. `RequireAuth` + ownership на jobs/playlists/TTS voice  
-2. Prod guards + durable JWT + `/login`  
-3. CSRF на mutate studio API; XSS через `textContent`  
-4. `SafeDownload` baseline (HTTPS, allowlist, private IP, size) + `SafeMediaPath` play  
-5. Atomic `Spend` + Postgres; unique `IdemKey`  
-6. AceData `redactBody` в логах  
-7. Cover/karaoke/portrait списывают кредиты + ownership  
-8. CI: vet / test / build  
-
----
-
-## Соответствие prod checklist
-
-| Пункт | Статус |
-|-------|--------|
-| `go build` / `test` / `vet` | OK |
-| CI workflow | Есть |
-| RequireAuth + ownership | OK |
-| Prod danger-флаги (live) | **OK** (forced off) |
-| Fail-closed boot | **OK** (2.6.1) |
-| WEB_PUBLIC_URL | **OK** |
-| MAX studio login | **OK** (`/login`) |
-| Docker non-root | **OK** (2.6.3) |
-| SSRF redirects | **OK** (2.6.2) |
-| TTS / clone cost | **OK** (2.6.3) |
-| Idem claim→spend | **OK** (2.6.2) |
-| ЮKassa | нет |
-| DB password rotated | владелец подтвердил |
-
----
-
-## План реализации (эпохи)
-
-| | Эпоха | Pri | Работа | Effort |
-|---|-------|-----|--------|--------|
-| **1** | **12** | P0 | SSRF: `CheckRedirect` + IP pin + тесты | 0.5–1d |
-| **2** | **12** | P0 | Generate: claim → spend → CAS worker + refund | 1d |
-| **3** | **13** | P0 | Credits+limits: TTS, clone, karaoke, portrait | 1d |
-| **4** | **13** | P1 | Sanitize provider errors → `ProviderError` | 0.5d |
-| **5** | **13** | P1 | Dockerfile `USER` non-root | 0.5d |
-| **6** | **14** | P1 | One-time login → HttpOnly cookie | 1–2d |
-| **7** | **14** | P2 | Signed/TTL media; header-only webhook | 1d |
-| **8** | **15** | P2 | CI abuse tests; YooKassa; `PGSSLMODE=require` | 2d+ |
-
-**Спринт:** эпоха 12 = integrity (SSRF + idem); 13 = money burn + container; 14–15 = session/ops/pay.
-
----
-
-## Закрыто ранее (эпохи 7–11 + 2.5–2.6)
-
-- **7–11:** auth lockdown, CSRF/XSS, Postgres, atomic credits, CI, redact  
-- **2.5:** voice clone / cover upload  
-- **2.6:** karaoke + singing portrait  
-- **2.6.1:** fail-closed, durable JWT, `WEB_PUBLIC_URL`, MAX `/login`
-
-**Правило:** закрывать находки этого документа чеклистами новых эпох; не раздувать scope без `EPOCH*.md`.
+Подробный canvas: `uvo-audit-272.canvas.tsx` (Cursor).

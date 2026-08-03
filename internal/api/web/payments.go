@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -133,6 +134,11 @@ func (d *Deps) checkoutCredits(c *gin.Context) {
 }
 
 func (d *Deps) yooWebhook(c *gin.Context) {
+	if !yooWebhookIPAllowed(c.ClientIP()) {
+		logrus.WithField("ip", c.ClientIP()).Warn("yookassa webhook IP rejected")
+		c.Status(403)
+		return
+	}
 	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
 	if err != nil {
 		c.Status(400)
@@ -237,4 +243,34 @@ func (d *Deps) yooWebhook(c *gin.Context) {
 
 func (d *Deps) listPresets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"presets": services.ViralPresets})
+}
+
+// yooWebhookIPAllowed: if YOOKASSA_WEBHOOK_IPS is set (comma-separated IPs/CIDRs),
+// only those clients may hit the webhook. Empty = allow all (GetPayment still required).
+func yooWebhookIPAllowed(clientIP string) bool {
+	raw := strings.TrimSpace(os.Getenv("YOOKASSA_WEBHOOK_IPS"))
+	if raw == "" {
+		return true
+	}
+	ip := net.ParseIP(strings.TrimSpace(clientIP))
+	if ip == nil {
+		return false
+	}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "/") {
+			_, n, err := net.ParseCIDR(part)
+			if err == nil && n.Contains(ip) {
+				return true
+			}
+			continue
+		}
+		if p := net.ParseIP(part); p != nil && p.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }

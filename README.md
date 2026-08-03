@@ -2,7 +2,7 @@
 
 Go · Gin · AceData Suno · MAX bot · Web studio
 
-**Version: 2.7.2**
+**Version: 2.7.3**
 
 ## Quick start
 
