@@ -61,13 +61,16 @@ func main() {
 	if n, err := jobs.CleanupOlderThan(7 * 24 * time.Hour); err == nil && n > 0 {
 		logrus.Infof("cleaned %d old jobs", n)
 	}
-	// Stale async jobs → fail + refund (sonauto-style 15m sweeper).
+	// Stale async jobs → fail + refund; uploads GC.
 	go func() {
 		t := time.NewTicker(2 * time.Minute)
 		defer t.Stop()
 		for range t.C {
 			if n := jobs.FailStaleAndRefund(services.DefaultStaleJobAge, credits); n > 0 {
 				logrus.Warnf("stale jobs refunded: %d", n)
+			}
+			if n, err := services.CleanupUploadsOlderThan(cfg.MediaRoot, 7*24*time.Hour); err == nil && n > 0 {
+				logrus.Infof("cleaned %d old uploads", n)
 			}
 		}
 	}()
@@ -93,7 +96,7 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.7.1",
+		MaxOn: maxC.Enabled(), Version: "2.7.2",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -111,6 +114,6 @@ func main() {
 	if yoo == nil || !yoo.Enabled() {
 		logrus.Info("YOOKASSA_* не заданы — checkout недоступен (DEMO_TOPUP для локалки)")
 	}
-	logrus.Infof("UVO 2.7.1 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
+	logrus.Infof("UVO 2.7.2 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

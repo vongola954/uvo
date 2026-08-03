@@ -2,6 +2,9 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -23,6 +26,17 @@ func NewCreditService(db *gorm.DB) *CreditService {
 func (c *CreditService) ensure(userID string) (*models.CreditBalance, error) {
 	var row models.CreditBalance
 	err := c.db.Where(models.CreditBalance{UserID: userID}).
+		Attrs(models.CreditBalance{Balance: c.free}).
+		FirstOrCreate(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (c *CreditService) ensureTx(tx *gorm.DB, userID string) (*models.CreditBalance, error) {
+	var row models.CreditBalance
+	err := tx.Where(models.CreditBalance{UserID: userID}).
 		Attrs(models.CreditBalance{Balance: c.free}).
 		FirstOrCreate(&row).Error
 	if err != nil {
@@ -59,19 +73,77 @@ func (c *CreditService) Spend(userID string, n int) error {
 	return nil
 }
 
-func (c *CreditService) Add(userID string, n int) {
+// Add increments balance; returns error on DB failure.
+func (c *CreditService) Add(userID string, n int) error {
 	if n <= 0 {
-		return
+		return fmt.Errorf("invalid add amount")
 	}
-	_, _ = c.ensure(userID)
-	_ = c.db.Model(&models.CreditBalance{}).
+	if _, err := c.ensure(userID); err != nil {
+		return err
+	}
+	res := c.db.Model(&models.CreditBalance{}).
+		Where("user_id = ?", userID).
+		Update("balance", gorm.Expr("balance + ?", n))
+	return res.Error
+}
+
+func (c *CreditService) AddTx(tx *gorm.DB, userID string, n int) error {
+	if n <= 0 {
+		return fmt.Errorf("invalid add amount")
+	}
+	if _, err := c.ensureTx(tx, userID); err != nil {
+		return err
+	}
+	return tx.Model(&models.CreditBalance{}).
 		Where("user_id = ?", userID).
 		Update("balance", gorm.Expr("balance + ?", n)).Error
 }
 
-// Refund returns credits after failed provider call.
+// Refund returns credits after failed provider call (best-effort).
 func (c *CreditService) Refund(userID string, n int) {
-	c.Add(userID, n)
+	_ = c.Add(userID, n)
+}
+
+// SettlePaymentCAS marks pending order succeeded and credits user in one transaction.
+// Returns (settled, error). settled=false if already processed.
+func (c *CreditService) SettlePaymentCAS(orderID, providerPaymentID string, credits int) (settled bool, err error) {
+	if credits <= 0 {
+		return false, fmt.Errorf("invalid credits")
+	}
+	err = c.db.Transaction(func(tx *gorm.DB) error {
+		var order models.PaymentOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&order, "id = ?", orderID).Error; err != nil {
+			return err
+		}
+		if order.Status == "succeeded" {
+			settled = false
+			return nil
+		}
+		if order.Status != "pending" {
+			return fmt.Errorf("order status %s", order.Status)
+		}
+		res := tx.Model(&models.PaymentOrder{}).
+			Where("id = ? AND status = ?", orderID, "pending").
+			Updates(map[string]interface{}{
+				"status":              "succeeded",
+				"provider_payment_id": providerPaymentID,
+				"updated_at":          time.Now(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			settled = false
+			return nil
+		}
+		if err := c.AddTx(tx, order.UserID, credits); err != nil {
+			return err
+		}
+		settled = true
+		return nil
+	})
+	return settled, err
 }
 
 // SpendTx locks the row inside an existing transaction (Postgres); SQLite ignores FOR UPDATE.
@@ -95,13 +167,13 @@ func (c *CreditService) SpendTx(tx *gorm.DB, userID string, n int) error {
 
 // CreditPack is a purchasable credit bundle.
 type CreditPack struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Credits    int    `json:"credits"`
-	PriceRub   int    `json:"price_rub"`
-	RubPerSong float64 `json:"rub_per_song"` // price/credits at 1 credit = 1 song
-	Featured   bool   `json:"featured,omitempty"`
-	Badge      string `json:"badge,omitempty"`
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Credits    int     `json:"credits"`
+	PriceRub   int     `json:"price_rub"`
+	RubPerSong float64 `json:"rub_per_song"`
+	Featured   bool    `json:"featured,omitempty"`
+	Badge      string  `json:"badge,omitempty"`
 }
 
 var CreditPacks = []CreditPack{
@@ -122,14 +194,12 @@ func init() {
 	}
 }
 
-// PacksPublic returns packs with computed ₽/песня for API/UI.
 func PacksPublic() []CreditPack {
 	out := make([]CreditPack, len(CreditPacks))
 	copy(out, CreditPacks)
 	return out
 }
 
-// PackByID returns credits and price for a known pack.
 func PackByID(id string) (credits, priceRub int, name string, ok bool) {
 	for _, p := range CreditPacks {
 		if p.ID == id {
@@ -137,4 +207,16 @@ func PackByID(id string) (credits, priceRub int, name string, ok bool) {
 		}
 	}
 	return 0, 0, "", false
+}
+
+// DualOutputEnabled reports DUAL_OUTPUT=true (AceData multi-clip keep).
+func DualOutputEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("DUAL_OUTPUT")), "true")
+}
+
+func DualPolicyLabel() string {
+	if DualOutputEnabled() {
+		return "on"
+	}
+	return "off"
 }

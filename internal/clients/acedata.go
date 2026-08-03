@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -90,13 +92,22 @@ type aceTaskResponse struct {
 }
 
 func (c *AceDataClient) Generate(req *GenerateRequest) (*GenerateResponse, error) {
+	clips, err := c.GenerateAll(req)
+	if err != nil {
+		return nil, err
+	}
+	return clips[0], nil
+}
+
+// GenerateAll returns 1–2 clips (2 when DUAL_OUTPUT=true and AceData provides them).
+func (c *AceDataClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse, error) {
 	if !c.async {
 		return nil, fmt.Errorf("sync mode not supported")
 	}
-	return c.generateAsync(req)
+	return c.generateAsyncAll(req)
 }
 
-func (c *AceDataClient) generateAsync(req *GenerateRequest) (*GenerateResponse, error) {
+func (c *AceDataClient) generateAsyncAll(req *GenerateRequest) ([]*GenerateResponse, error) {
 	model := c.model
 	if req.Model != "" {
 		model = req.Model
@@ -176,16 +187,40 @@ func (c *AceDataClient) generateAsync(req *GenerateRequest) (*GenerateResponse, 
 		return nil, fmt.Errorf("acedata did not return task_id, body: %s", string(body))
 	}
 
-	return c.pollTask(createResp.TaskID)
+	want := 1
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("DUAL_OUTPUT")), "true") {
+		want = 2
+	}
+	return c.pollTaskClips(createResp.TaskID, want)
 }
 
+// pollTask waits for the first succeeded clip (used by voice/cover helpers).
 func (c *AceDataClient) pollTask(taskID string) (*GenerateResponse, error) {
+	clips, err := c.pollTaskClips(taskID, 1)
+	if err != nil {
+		return nil, err
+	}
+	return clips[0], nil
+}
+
+// pollTaskClips waits for up to want succeeded clips (1–2).
+func (c *AceDataClient) pollTaskClips(taskID string, want int) ([]*GenerateResponse, error) {
+	if want < 1 {
+		want = 1
+	}
+	if want > 2 {
+		want = 2
+	}
 	start := time.Now()
 	attempt := 0
+	var lastClips []*GenerateResponse
 
 	for {
 		attempt++
 		if time.Since(start) > time.Duration(c.maxWait)*time.Second {
+			if len(lastClips) >= 1 {
+				return lastClips, nil
+			}
 			return nil, fmt.Errorf("task %s timeout after %d seconds (%d attempts)", taskID, c.maxWait, attempt)
 		}
 
@@ -241,24 +276,43 @@ func (c *AceDataClient) pollTask(taskID string) (*GenerateResponse, error) {
 			return nil, fmt.Errorf("task failed: %s", taskResult.Error)
 		}
 
-		if len(taskResult.Data) > 0 {
-			item := taskResult.Data[0]
-
+		var clips []*GenerateResponse
+		allFailed := len(taskResult.Data) > 0
+		for _, item := range taskResult.Data {
 			switch item.State {
 			case "succeeded", "completed", "success":
-				if item.AudioURL == "" {
-					return nil, fmt.Errorf("acedata returned empty audio_url, full response: %s", string(body))
+				allFailed = false
+				if item.AudioURL != "" {
+					clips = append(clips, itemToGenerateResponse(item, taskID))
 				}
-				return itemToGenerateResponse(item, taskID), nil
-
 			case "failed", "error":
-				return nil, fmt.Errorf("task failed with state=%s, response: %s", item.State, string(body))
+				// keep scanning siblings
+			default:
+				allFailed = false
 			}
 		}
-
-		// Fallback: success + data with audio_url but without explicit state
-		if taskResult.Success && len(taskResult.Data) > 0 && taskResult.Data[0].AudioURL != "" {
-			return itemToGenerateResponse(taskResult.Data[0], taskID), nil
+		// Fallback: success flag + audio without state
+		if len(clips) == 0 && taskResult.Success {
+			for _, item := range taskResult.Data {
+				if item.AudioURL != "" {
+					clips = append(clips, itemToGenerateResponse(item, taskID))
+				}
+			}
+		}
+		if len(clips) > 0 {
+			lastClips = clips
+		}
+		if len(clips) >= want {
+			if len(clips) > want {
+				clips = clips[:want]
+			}
+			return clips, nil
+		}
+		if len(clips) >= 1 && allFailed {
+			return clips, nil
+		}
+		if allFailed && len(clips) == 0 {
+			return nil, fmt.Errorf("task failed with state=failed, response: %s", string(body))
 		}
 
 		time.Sleep(time.Duration(c.pollInt) * time.Second)

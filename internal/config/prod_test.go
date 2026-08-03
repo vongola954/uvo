@@ -52,3 +52,28 @@ func TestApplyProductionGuardsForcesFlags(t *testing.T) {
 		t.Fatal("jwt not strengthened")
 	}
 }
+
+func TestInsecureIgnoredOnPublicHTTPS(t *testing.T) {
+	t.Setenv("UVO_ALLOW_INSECURE", "true")
+	t.Setenv("ALLOW_ANON", "true")
+	t.Setenv("DEMO_TOPUP", "true")
+	cfg := &Config{
+		WebPublicURL: "https://example.com",
+		DBDriver:     "sqlite",
+		JWTSecret:    "dev-secret-change-me",
+		MediaRoot:    t.TempDir(),
+		BotMode:      "polling",
+	}
+	if insecureEscapeAllowed(cfg.WebPublicURL) {
+		t.Fatal("escape must be ignored on https")
+	}
+	if err := cfg.ApplyProductionGuards(); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ProductionGuardsActive() {
+		t.Fatal("guards should stay active")
+	}
+	if os.Getenv("ALLOW_ANON") != "false" {
+		t.Fatal("ALLOW_ANON should be forced false despite UVO_ALLOW_INSECURE")
+	}
+}

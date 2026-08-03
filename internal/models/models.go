@@ -144,8 +144,10 @@ type JobRecord struct {
 	Status       string `gorm:"index"`
 	Error        string
 	TrackID      uint
+	AltTrackID   uint   // second variant when DUAL_OUTPUT
 	Title        string
 	PlayURL      string
+	AltPlayURL   string
 	DownloadURL  string // signed short-TTL download when available
 	Duration     int
 	CreditsSpent int  `gorm:"default:0"`

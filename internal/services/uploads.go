@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -49,4 +50,39 @@ func ResolveUploadPath(mediaRoot, name string) (string, error) {
 	}
 	raw := filepath.Join(mediaRoot, "uploads", name)
 	return SafeMediaPath(filepath.Join(mediaRoot, "uploads"), raw)
+}
+
+// CleanupUploadsOlderThan deletes files in mediaRoot/uploads older than age.
+func CleanupUploadsOlderThan(mediaRoot string, age time.Duration) (int, error) {
+	if mediaRoot == "" {
+		mediaRoot = "./data/media"
+	}
+	if age <= 0 {
+		age = 7 * 24 * time.Hour
+	}
+	dir := filepath.Join(mediaRoot, "uploads")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	cut := time.Now().Add(-age)
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cut) {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err == nil {
+				n++
+			}
+		}
+	}
+	return n, nil
 }

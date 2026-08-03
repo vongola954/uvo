@@ -2,6 +2,8 @@
 
 Go · Gin · AceData Suno · MAX bot · Web studio
 
+**Version: 2.7.2**
+
 ## Quick start
 
 ```bash
@@ -13,12 +15,12 @@ go run ./cmd/server
 Open http://localhost:8010/
 
 ## Pages
-- `/` — студия
+- `/` — студия (режимы Идея / Свой текст / Instrumental)
 - `/tracks.html` — треки
 - `/feed.html` — лента
 - `/playlists.html` — плейлисты
-- `/health` — статус AceData/MAX
-- `/metrics` — счётчики
+- `/health` — slim status (full с `METRICS_TOKEN`)
+- `/metrics` — счётчики (токен или localhost)
 
 ## Docker
 
@@ -28,7 +30,7 @@ docker compose up --build
 
 ## Amvera + PostgreSQL
 
-См. [deploy/AMVERA.md](deploy/AMVERA.md): `amvera.yml` + managed Postgres, `DB_DRIVER=postgres`.
+См. [deploy/AMVERA.md](deploy/AMVERA.md): `amvera.yml` + managed Postgres, `containerPort: 8080`.
 
 ## Env (prod)
 ```
@@ -36,37 +38,33 @@ ALLOW_ANON=false
 DEV_AUTH=false
 DEMO_TOPUP=false
 JWT_SECRET=<random>          # или авто из /data/jwt_secret
-WEB_PUBLIC_URL=https://uvo-baskakovanton.amvera.io
+WEB_PUBLIC_URL=https://your-host
 MAX_WEBHOOK_SECRET=<random>  # for webhook mode
 BOT_MODE=polling
+YOOKASSA_SHOP_ID=
+YOOKASSA_SECRET_KEY=
+METRICS_TOKEN=<random>       # для /metrics и /health?full=1
+# DUAL_OUTPUT=true           # 2 клипа (только после COST.md margin)
+# OPENAI_API_KEY=            # lyrics assist
 ```
 
-Вход в веб на проде: в MAX-боте команда **`/login`** → ссылка с JWT.
+`UVO_ALLOW_INSECURE=true` **игнорируется**, если `WEB_PUBLIC_URL` — публичный HTTPS.
 
-Локальный demo: `UVO_ALLOW_INSECURE=true` + `ALLOW_ANON=true` (и при необходимости `DEV_AUTH=true`, `DEMO_TOPUP=true`).
+Вход в веб на проде: MAX **`/login`** → one-time code → cookie.
 
 ## Оплата
-- Пакеты кредитов в `GET /api/credits` (`packs`, `payment: coming_soon`).
-- Демо topup: `POST /api/credits/topup` **только** при `DEMO_TOPUP=true` (+ auth) — иначе 403.
-- Реальный checkout (ЮKassa) — ещё не подключён; UI не обещает «купить сейчас».
-
-## Docs
-- [AUDIT.md](AUDIT.md) — жёсткий аудит 1.9 (2026-07-28)
-- [FIXPLAN.md](FIXPLAN.md) — приоритеты P0→P2
-- [ROADMAP.md](ROADMAP.md) — эпохи 1–11
-
-Текущая версия: **2.6.0** (караоке + поющий портрет).
+- Пакеты: `GET /api/credits` (входной `pack5` @ 99₽).
+- Checkout: `POST /api/credits/checkout` при заданных `YOOKASSA_*`.
+- Webhook: `POST /api/payments/yookassa` — **верификация через GetPayment API** до начисления.
+- Демо: `DEMO_TOPUP=true` + `POST /api/credits/topup`.
 
 ## Studio
-- **Генерация** — промпт / стиль / голос (AceData persona)
-- **Клон голоса** — `POST /api/voice/clone` → AceData `/suno/voices` (нужен `WEB_PUBLIC_URL`)
-- **Кавер** — `POST /api/cover` (загрузка любого трека + свой голос, −2 кредита)
-- **Правки** — на `/tracks.html` → «Правка (−1)»
-- **Караоке** — `/tracks.html` → «Караоке» → stems + timing + mp4 (−2)
-- **Поющий портрет** — фото + трек → Hedra lip-sync (`HEDRA_API_KEY`) или Kling-клип (−2/−3)
+- Генерация (−1) · клон (−2) · кавер (−2) · караоке (−2) · portrait (−2/−3)
+- Черновик текста: `POST /api/lyrics/assist` (нужен `OPENAI_API_KEY`, без списания кредита музыки)
 
-Для clone/cover AceData скачивает файлы с вашего домена: `GET /uploads/:name`. На Amvera задайте `WEB_PUBLIC_URL=https://uvo-….amvera.io`.
+## Docs
+- [COST.md](COST.md) — unit economics / dual gate
+- [EPOCH13.md](EPOCH13.md) — текущий engineering sprint
+- [AUDIT.md](AUDIT.md) — security audit snapshot
 
-## Epochs
-1 AceData · 2 Reliability · 3 Security · 4 MAX · 5 Product UX · 6 Polish  
-**Done:** 7–11 · **2.5** voice/cover · **2.6** karaoke/portrait
+Remote: https://github.com/vongola954/uvo · deploy: Amvera `amvera` remote

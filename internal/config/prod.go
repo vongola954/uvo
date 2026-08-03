@@ -25,15 +25,34 @@ func (c *Config) IsProduction() bool {
 	return false
 }
 
+// ProductionGuardsActive is true when demo/anon flags are forced off.
+func (c *Config) ProductionGuardsActive() bool {
+	return c.IsProduction() && !insecureEscapeAllowed(c.WebPublicURL)
+}
+
+// insecureEscapeAllowed is true only for local/dev: UVO_ALLOW_INSECURE=true AND
+// no public HTTPS WEB_PUBLIC_URL (prod with https ignores the escape hatch).
+func insecureEscapeAllowed(webPublicURL string) bool {
+	if os.Getenv("UVO_ALLOW_INSECURE") != "true" {
+		return false
+	}
+	u := strings.ToLower(strings.TrimSpace(webPublicURL))
+	if strings.HasPrefix(u, "https://") {
+		logrus.Warn("UVO_ALLOW_INSECURE ignored: WEB_PUBLIC_URL is public HTTPS")
+		return false
+	}
+	return true
+}
+
 // ApplyProductionGuards forces safe flags and durable secrets for Amvera/prod.
 func (c *Config) ApplyProductionGuards() error {
-	insecure := os.Getenv("UVO_ALLOW_INSECURE") == "true"
+	insecure := insecureEscapeAllowed(c.WebPublicURL)
 
-	// Default public URL for known Amvera app if missing (clone/cover/portrait need it).
-	if c.WebPublicURL == "" && (strings.EqualFold(c.DBDriver, "postgres") || os.Getenv("PORT") != "") {
-		c.WebPublicURL = "https://uvo-baskakovanton.amvera.io"
-		_ = os.Setenv("WEB_PUBLIC_URL", c.WebPublicURL)
-		logrus.Warn("WEB_PUBLIC_URL was empty — set to https://uvo-baskakovanton.amvera.io")
+	// Prefer explicit WEB_PUBLIC_URL; do not hardcode a single Amvera hostname.
+	if c.WebPublicURL == "" {
+		if v := strings.TrimSpace(os.Getenv("WEB_PUBLIC_URL")); v != "" {
+			c.WebPublicURL = v
+		}
 	}
 
 	dataDir := dataDirFromMedia(c.MediaRoot)

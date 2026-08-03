@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <title>UVO — нейросеть для музыки | кавер, караоке, свой голос</title>
-  <meta name="description" content="UVO: генерация песен, клон голоса, ИИ-кавер, караоке-видео и singing portrait. Вход через MAX /login.">
+  <meta name="description" content="UVO: генерация песен, клон голоса, ИИ-кавер, караоке-видео и singing portrait. Вход через MAX /login. От 99 ₽ · 2 песни в подарок.">
+  <meta property="og:title" content="UVO — студия AI-музыки">
+  <meta property="og:description" content="Песня, минус, кавер своим голосом. MAX /login · от 99 ₽.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/favicon.svg">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
   <style>
@@ -257,7 +262,10 @@
             <select id="voice_id"><option value="">По умолчанию Suno</option></select>
           </div>
           <div id="field-lyrics">
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2" id="lyrics-label">Стихи</label>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500" id="lyrics-label">Стихи</label>
+              <button type="button" id="btn-lyrics-assist" class="text-[11px] text-emerald-400 hover:underline">Черновик текста</button>
+            </div>
             <textarea id="lyrics" rows="3" placeholder="Опционально — или переключитесь в «Свой текст»"></textarea>
           </div>
           <input type="hidden" id="instrumental" value="0">
@@ -433,6 +441,30 @@
     }
     document.querySelectorAll('.gen-mode').forEach((b) => {
       b.addEventListener('click', () => setGenMode(b.getAttribute('data-mode')));
+    });
+    document.getElementById('btn-lyrics-assist')?.addEventListener('click', async () => {
+      const idea = document.getElementById('prompt')?.value || '';
+      const style = document.getElementById('style')?.value || '';
+      if (!idea.trim()) { alert('Сначала опишите идею в промпте'); return; }
+      const btn = document.getElementById('btn-lyrics-assist');
+      btn.disabled = true;
+      btn.textContent = 'Пишу…';
+      try {
+        await UVO.ensureDevToken();
+        const res = await UVO.api('/api/lyrics/assist', {
+          method: 'POST',
+          body: JSON.stringify({ idea, style }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((d.error && d.error.message) || 'assist unavailable');
+        document.getElementById('lyrics').value = d.lyrics || '';
+        setGenMode('lyrics');
+      } catch (e) {
+        alert(e.message || 'Нужен OPENAI_API_KEY на сервере');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Черновик текста';
+      }
     });
 
     function applyPreset(p) {
@@ -883,12 +915,29 @@
         request_id: (crypto.randomUUID && crypto.randomUUID()) || ('r-' + Date.now() + '-' + Math.random().toString(16).slice(2)),
       };
 
-      function showResult(playUrl, title, duration, downloadUrl, trackId) {
+      function showResult(playUrl, title, duration, downloadUrl, trackId, altPlayUrl) {
         document.getElementById('player').src = playUrl;
-        document.getElementById('track-title').textContent = (title || 'Трек') + ' · ' + (duration || '?') + 's';
+        let t = (title || 'Трек') + ' · ' + (duration || '?') + 's';
+        if (altPlayUrl) t += ' · есть v2';
+        document.getElementById('track-title').textContent = t;
         document.getElementById('dl-link').href = downloadUrl || playUrl;
         const stems = document.getElementById('stems-link');
         if (stems && trackId) stems.href = '/karaoke.html?id=' + trackId;
+        let alt = document.getElementById('alt-link');
+        if (altPlayUrl) {
+          if (!alt) {
+            alt = document.createElement('a');
+            alt.id = 'alt-link';
+            alt.className = 'btn-ghost text-xs px-4 py-2 rounded-xl';
+            alt.textContent = 'Вариант 2';
+            document.getElementById('dl-link')?.parentElement?.appendChild(alt);
+          }
+          alt.href = altPlayUrl;
+          alt.classList.remove('hidden');
+          alt.onclick = (e) => { e.preventDefault(); document.getElementById('player').src = altPlayUrl; };
+        } else if (alt) {
+          alt.classList.add('hidden');
+        }
         result.classList.remove('hidden');
       }
 
@@ -911,7 +960,14 @@
             const job = await jobRes.json();
             if (job.status === 'done') {
               stopProgress();
-              showResult(job.play_url, job.title, job.duration, job.download_url || job.DownloadURL, job.track_id || job.TrackID);
+              showResult(
+                job.play_url || job.PlayURL,
+                job.title || job.Title,
+                job.duration || job.Duration,
+                job.download_url || job.DownloadURL,
+                job.track_id || job.TrackID,
+                job.alt_play_url || job.AltPlayURL
+              );
               done = true;
             } else if (job.status === 'failed') {
               throw new Error(job.error || 'fail');
@@ -919,7 +975,7 @@
           }
         } else {
           stopProgress();
-          showResult(data.play_url, data.title, data.duration, data.download_url, data.track_id);
+          showResult(data.play_url, data.title, data.duration, data.download_url, data.track_id, data.alt_play_url);
         }
         try {
           const cr = await UVO.api('/api/credits');

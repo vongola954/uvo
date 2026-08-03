@@ -135,7 +135,7 @@ func (d *Deps) Generate(c *gin.Context) {
 			d.Jobs.MarkFailedRefunded(jobID, "lost claim")
 			return
 		}
-		track, err := d.Gen.Generate(genReq)
+		tracks, err := d.Gen.GenerateAll(genReq)
 		if err != nil {
 			d.Credits.Refund(userID, 1)
 			msg := safeErrMessage(err)
@@ -147,6 +147,7 @@ func (d *Deps) Generate(c *gin.Context) {
 			})
 			return
 		}
+		track := tracks[0]
 		middleware.IncGenOK()
 		d.Jobs.Update(jobID, func(j *models.JobRecord) {
 			j.Status = string(services.JobDone)
@@ -155,6 +156,10 @@ func (d *Deps) Generate(c *gin.Context) {
 			j.Duration = track.Duration
 			j.PlayURL = fmt.Sprintf("/tracks/%d/play", track.ID)
 			j.DownloadURL = services.SignTrackDownloadURL(track.ID, secret)
+			if len(tracks) > 1 {
+				j.AltTrackID = tracks[1].ID
+				j.AltPlayURL = fmt.Sprintf("/tracks/%d/play", tracks[1].ID)
+			}
 		})
 	})
 

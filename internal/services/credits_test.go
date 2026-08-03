@@ -72,3 +72,31 @@ func TestCreditRefund(t *testing.T) {
 		t.Fatalf("after refund want %d, got %d", FreeCredits, c.Balance(uid))
 	}
 }
+
+func TestSettlePaymentCAS(t *testing.T) {
+	db := testDB(t)
+	if err := db.AutoMigrate(&models.PaymentOrder{}); err != nil {
+		t.Fatal(err)
+	}
+	c := NewCreditService(db)
+	order := &models.PaymentOrder{
+		ID: "ord-1", UserID: "pay-u", PackID: "pack5", Credits: 5, AmountRub: 99, Status: "pending",
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatal(err)
+	}
+	ok, err := c.SettlePaymentCAS("ord-1", "pay_abc", 5)
+	if err != nil || !ok {
+		t.Fatalf("settle: %v %v", ok, err)
+	}
+	if c.Balance("pay-u") != FreeCredits+5 {
+		t.Fatalf("bal %d", c.Balance("pay-u"))
+	}
+	ok2, err := c.SettlePaymentCAS("ord-1", "pay_abc", 5)
+	if err != nil || ok2 {
+		t.Fatalf("idempotent settle want false: %v %v", ok2, err)
+	}
+	if c.Balance("pay-u") != FreeCredits+5 {
+		t.Fatal("double credit")
+	}
+}

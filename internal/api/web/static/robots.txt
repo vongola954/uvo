@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /metrics
+Disallow: /uploads/
+Disallow: /media/
+
+Sitemap: https://uvo-baskakovanton.amvera.io/sitemap.xml

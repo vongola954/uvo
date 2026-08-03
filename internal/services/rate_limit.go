@@ -29,10 +29,16 @@ func NewRateLimiter(db *gorm.DB) *RateLimiter {
 	return &RateLimiter{db: db, limitH: h, limitD: d}
 }
 
+// Allow records a generate event; rolls back the event if limits exceeded (insert-then-check).
 func (r *RateLimiter) Allow(userID string) error {
 	now := time.Now()
 	hourAgo := now.Add(-time.Hour)
 	dayAgo := now.Add(-24 * time.Hour)
+
+	ev := &models.RateEvent{UserID: userID, Kind: "generate", CreatedAt: now}
+	if err := r.db.Create(ev).Error; err != nil {
+		return err
+	}
 
 	var hourN, dayN int64
 	_ = r.db.Model(&models.RateEvent{}).
@@ -42,14 +48,15 @@ func (r *RateLimiter) Allow(userID string) error {
 		Where("user_id = ? AND kind = ? AND created_at > ?", userID, "generate", dayAgo).
 		Count(&dayN).Error
 
-	if int(hourN) >= r.limitH {
+	if int(hourN) > r.limitH {
+		_ = r.db.Delete(ev).Error
 		return fmt.Errorf("rate limit: max %d generations per hour", r.limitH)
 	}
-	if int(dayN) >= r.limitD {
+	if int(dayN) > r.limitD {
+		_ = r.db.Delete(ev).Error
 		return fmt.Errorf("rate limit: max %d generations per day", r.limitD)
 	}
-
-	return r.db.Create(&models.RateEvent{UserID: userID, Kind: "generate", CreatedAt: now}).Error
+	return nil
 }
 
 func ClampDuration(sec, max int) int {

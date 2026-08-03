@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,15 @@ type YooPaymentResult struct {
 	ID              string
 	Status          string
 	ConfirmationURL string
+}
+
+// YooPaymentInfo is a payment fetched from YooKassa (for webhook verification).
+type YooPaymentInfo struct {
+	ID       string
+	Status   string
+	Paid     bool
+	AmountRub int
+	Metadata map[string]string
 }
 
 // CreatePayment starts a redirect payment (bank card). amountRub in rubles.
@@ -103,6 +113,65 @@ func (y *YooKassaClient) CreatePayment(amountRub int, description, returnURL, or
 		ID:              out.ID,
 		Status:          out.Status,
 		ConfirmationURL: out.Confirmation.ConfirmationURL,
+	}, nil
+}
+
+// GetPayment fetches payment by id (authoritative source for webhooks).
+func (y *YooKassaClient) GetPayment(paymentID string) (*YooPaymentInfo, error) {
+	if !y.Enabled() {
+		return nil, fmt.Errorf("yookassa not configured")
+	}
+	paymentID = strings.TrimSpace(paymentID)
+	if paymentID == "" {
+		return nil, fmt.Errorf("empty payment id")
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://api.yookassa.ru/v3/payments/"+paymentID, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(y.shopID, y.secret)
+	resp, err := y.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("yookassa GET payment HTTP %d: %s", resp.StatusCode, truncateStr(string(data), 200))
+	}
+	var out struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Paid   bool   `json:"paid"`
+		Amount struct {
+			Value    string `json:"value"`
+			Currency string `json:"currency"`
+		} `json:"amount"`
+		Metadata map[string]interface{} `json:"metadata"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	rub := 0
+	if out.Amount.Value != "" {
+		var f float64
+		if _, err := fmt.Sscanf(out.Amount.Value, "%f", &f); err == nil {
+			rub = int(f + 0.001)
+		}
+	}
+	meta := map[string]string{}
+	for k, v := range out.Metadata {
+		switch t := v.(type) {
+		case string:
+			meta[k] = t
+		case float64:
+			meta[k] = fmt.Sprintf("%.0f", t)
+		default:
+			meta[k] = fmt.Sprint(v)
+		}
+	}
+	return &YooPaymentInfo{
+		ID: out.ID, Status: out.Status, Paid: out.Paid, AmountRub: rub, Metadata: meta,
 	}, nil
 }
 

@@ -50,7 +50,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.7.1"
+		d.Version = "2.7.2"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -59,35 +59,46 @@ func Register(r *gin.Engine, d *Deps) {
 	r.GET("/karaoke.html", func(c *gin.Context) { c.File("./internal/api/web/static/karaoke.html") })
 	r.GET("/feed.html", func(c *gin.Context) { c.File("./internal/api/web/static/feed.html") })
 	r.GET("/playlists.html", func(c *gin.Context) { c.File("./internal/api/web/static/playlists.html") })
-	r.GET("/metrics", middleware.MetricsHandler)
+	r.GET("/robots.txt", func(c *gin.Context) { c.File("./internal/api/web/static/robots.txt") })
+	r.GET("/sitemap.xml", func(c *gin.Context) { c.File("./internal/api/web/static/sitemap.xml") })
+	r.GET("/favicon.svg", func(c *gin.Context) { c.File("./internal/api/web/static/favicon.svg") })
+	r.GET("/metrics", middleware.MetricsAuth(), middleware.MetricsHandler)
 	r.GET("/uploads/:name", d.serveUpload)
 	r.GET("/media/assets/:name", d.serveMediaAsset)
 	r.GET("/api/presets", d.listPresets)
 
 	r.GET("/health", func(c *gin.Context) {
-		aceSt := d.Ace.Status()
+		aceOK := d.Ace != nil && d.Ace.Status().OK
 		status := "ok"
-		if !aceSt.OK {
+		if !aceOK {
 			status = "degraded"
 		}
-		hedraOn := d.Hedra != nil && d.Hedra.Enabled()
-		c.JSON(200, gin.H{
-			"status":         status,
-			"version":        d.Version,
-			"max_bot":        d.MaxOn,
-			"acedata":        aceSt,
-			"hedra_portrait": hedraOn,
-			"music_provider": "acedata_only",
-			"db_driver":      d.Cfg.DBDriver,
-			"prod_guards":    d.Cfg != nil && d.Cfg.IsProduction() && os.Getenv("UVO_ALLOW_INSECURE") != "true",
-			"allow_anon":     os.Getenv("ALLOW_ANON") == "true",
-			"dev_auth":       os.Getenv("DEV_AUTH") == "true",
-			"demo_topup":     os.Getenv("DEMO_TOPUP") == "true",
-			"web_public_url": d.Cfg.WebPublicURL,
-			"dual_policy":    "off",
-			"yookassa":       d.Yoo != nil && d.Yoo.Enabled(),
-			"hint":           "При provider_balance_empty пополните https://platform.acedata.cloud · вход в веб: MAX /login",
-		})
+		prodGuards := d.Cfg != nil && d.Cfg.ProductionGuardsActive()
+		slim := gin.H{
+			"status":      status,
+			"version":     d.Version,
+			"max_bot":     d.MaxOn,
+			"yookassa":    d.Yoo != nil && d.Yoo.Enabled(),
+			"dual_policy": services.DualPolicyLabel(),
+			"prod_guards": prodGuards,
+		}
+		// Full dump only with metrics token (ops).
+		tok := strings.TrimSpace(os.Getenv("METRICS_TOKEN"))
+		fullOK := tok != "" && (c.GetHeader("X-Metrics-Token") == tok || c.Query("token") == tok)
+		if fullOK || c.Query("full") == "1" && tok == "" && !strings.HasPrefix(strings.ToLower(os.Getenv("WEB_PUBLIC_URL")), "https://") {
+			aceSt := d.Ace.Status()
+			hedraOn := d.Hedra != nil && d.Hedra.Enabled()
+			slim["acedata"] = aceSt
+			slim["hedra_portrait"] = hedraOn
+			slim["music_provider"] = "acedata_only"
+			slim["db_driver"] = d.Cfg.DBDriver
+			slim["allow_anon"] = os.Getenv("ALLOW_ANON") == "true"
+			slim["dev_auth"] = os.Getenv("DEV_AUTH") == "true"
+			slim["demo_topup"] = os.Getenv("DEMO_TOPUP") == "true"
+			slim["web_public_url"] = d.Cfg.WebPublicURL
+			slim["hint"] = "При provider_balance_empty пополните AceData · вход: MAX /login"
+		}
+		c.JSON(200, slim)
 	})
 
 	r.POST("/api/auth/token", d.authToken)
@@ -136,6 +147,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.POST("/voice/clone", d.voiceClone)
 		api.POST("/tts", d.tts)
 		api.POST("/cover", d.coverUpload)
+		api.POST("/lyrics/assist", d.lyricsAssist)
 		api.GET("/elevenlabs/voices", d.elevenVoices)
 	}
 }
