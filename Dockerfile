@@ -14,12 +14,12 @@ COPY internal/api/web/static ./internal/api/web/static
 # /data — persistent volume on Amvera (media + jwt_secret)
 RUN mkdir -p /data/media /data/logs \
     && chown -R uvo:uvo /app /data
+# WEB_PUBLIC_URL must be set in Amvera env (clone/cover/YooKassa return_url).
 ENV WEB_HOST=0.0.0.0 \
     WEB_PORT=8080 \
     PORT=8080 \
     DB_DRIVER=postgres \
     MEDIA_ROOT=/data/media \
-    WEB_PUBLIC_URL=https://uvo-baskakovanton.amvera.io \
     ALLOW_ANON=false \
     DEV_AUTH=false \
     DEMO_TOPUP=false \

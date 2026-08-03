@@ -139,23 +139,23 @@ type CreditBalance struct {
 
 
 type JobRecord struct {
-	ID           string `gorm:"primaryKey"`
-	UserID       string `gorm:"index"`
-	Status       string `gorm:"index"`
-	Error        string
-	TrackID      uint
-	AltTrackID   uint   // second variant when DUAL_OUTPUT
-	Title        string
-	PlayURL      string
-	AltPlayURL   string
-	DownloadURL  string // signed short-TTL download when available
-	Duration     int
-	CreditsSpent int  `gorm:"default:0"`
-	Refunded     bool `gorm:"default:false;index"`
-	RequestID    string    `gorm:"index"` // client idempotency id (may be empty)
-	IdemKey      string    `gorm:"uniqueIndex;not null"` // user|requestID or job id
-	CreatedAt    time.Time `gorm:"index"`
-	UpdatedAt    time.Time
+	ID           string    `gorm:"primaryKey" json:"id"`
+	UserID       string    `gorm:"index" json:"user_id"`
+	Status       string    `gorm:"index" json:"status"`
+	Error        string    `json:"error,omitempty"`
+	TrackID      uint      `json:"track_id,omitempty"`
+	AltTrackID   uint      `json:"alt_track_id,omitempty"`
+	Title        string    `json:"title,omitempty"`
+	PlayURL      string    `json:"play_url,omitempty"`
+	AltPlayURL   string    `json:"alt_play_url,omitempty"`
+	DownloadURL  string    `json:"download_url,omitempty"`
+	Duration     int       `json:"duration,omitempty"`
+	CreditsSpent int       `gorm:"default:0" json:"credits_spent,omitempty"`
+	Refunded     bool      `gorm:"default:false;index" json:"refunded,omitempty"`
+	RequestID    string    `gorm:"index" json:"request_id,omitempty"`
+	IdemKey      string    `gorm:"uniqueIndex;not null" json:"-"`
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // PaymentOrder tracks YooKassa (or demo) credit purchases.

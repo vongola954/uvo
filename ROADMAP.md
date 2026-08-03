@@ -24,10 +24,14 @@
 | **9** | Prod foundation | ✅ 2.2.0 | [EPOCH9.md](EPOCH9.md) |
 | **10** | Product & pay | ✅ 2.3.0 | [EPOCH10.md](EPOCH10.md) |
 | **11** | Quality | ✅ 2.4.0 | [EPOCH11.md](EPOCH11.md) |
+| **12** | Modes / pricing / sweeper | ✅ 2.7.1 | [EPOCH12.md](EPOCH12.md) |
+| **13** | Webhook verify / lyrics / dual flag | ✅ 2.7.2 | [EPOCH13.md](EPOCH13.md) |
+| **14** | Ops polish | ✅ 2.7.3 | [EPOCH14.md](EPOCH14.md) |
+| **15** | Bot GTM + trusted proxies | ✅ 2.7.4 | [EPOCH15.md](EPOCH15.md) |
 
 ```
-1.9 ──аудит──► 7 Lockdown ──► 8 Auth UX ──► 9 Prod ──► 10 Product ──► 11 Quality
-                 P0              P0/P1         P1           P2 ✅           P2 ✅
+… → 12 modes → 13 pay-harden → 14 ops → 15 bot copy
+Owner next: YOOKASSA keys · COST.md · seed discover
 ```
 
 ## Правило работы агента / разработчика

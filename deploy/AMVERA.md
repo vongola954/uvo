@@ -53,7 +53,9 @@ postgres://USER:PASSWORD@amvera-LOGIN-cnpg-DBPROJECT-rw:5432/DBNAME?sslmode=disa
 Спецсимволы в пароле — URL-encode.
 
 Webhook ЮKassa: `https://YOUR_DOMAIN/api/payments/yookassa`  
-Проверка: `GET /health` → `"version":"2.7.3"`, `"yookassa":true` после ключей.
+Проверка: `GET /health` → `"version":"2.7.4"`, `"yookassa":true` после ключей.
+
+**Важно:** `WEB_PUBLIC_URL` задаётся только в переменных Amvera (в Docker image больше не зашит).
 
 ---
 

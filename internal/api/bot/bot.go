@@ -41,7 +41,13 @@ func (b *Bot) studioURL(path string) string {
 }
 
 func (b *Bot) sendHome(chatID int64, extra string) {
-	text := "UVO — AI-музыка\n\nВеб-студия и генерация в одном месте."
+	text := fmt.Sprintf(
+		"UVO — AI-студия музыки\n\n"+
+			"%d песни в подарок · 1 кредит = 1 песня\n"+
+			"Пакеты от 99₽ · кавер / караоке / свой голос\n\n"+
+			"/login — веб-студия · /generate — трек в чате · /credits — баланс",
+		services.FreeCredits,
+	)
 	if extra != "" {
 		text += "\n\n" + extra
 	}
@@ -129,8 +135,17 @@ func (b *Bot) HandleText(userID, text string, chatID int64) {
 		b.sendHome(chatID, "Войти в веб: /login")
 	case low == "/help" || low == "❓ /help":
 		_ = b.max.SendStudio(chatID,
-			"Команды:\n/generate — трек в чате\n/login — вход в веб-студию\n/studio — ссылка\n/tracks — мои треки\n\nПолный UI — после /login.",
+			"Команды:\n/generate — трек в чате (−1 кредит)\n/login — вход в веб-студию\n/credits — баланс\n/studio — ссылка\n/tracks — мои треки\n\n"+
+				fmt.Sprintf("%d бесплатно · пакеты от 99₽ в студии.", services.FreeCredits),
 			b.studioURL("/"))
+	case low == "/credits" || low == "/balance":
+		bal := 0
+		if b.credits != nil {
+			bal = b.credits.Balance(userID)
+		}
+		_ = b.max.SendStudio(chatID,
+			fmt.Sprintf("Баланс: %d кредитов\n1 кредит = 1 песня · кавер/караоке/клон −2\nПополнить: /login → Кредиты (от 99₽)", bal),
+			b.studioURL("/#pricing"))
 	case low == "/login" || low == "/web" || low == "/auth":
 		b.sendLoginLink(chatID, userID)
 	case low == "/studio" || strings.Contains(low, "студи"):
@@ -143,7 +158,7 @@ func (b *Bot) HandleText(userID, text string, chatID int64) {
 		b.sendLoginLinkTo(chatID, userID, "/playlists.html")
 	case low == "/generate" || low == "⚡ /generate":
 		b.states.Store(userID, "await_prompt")
-		_ = b.max.SendMessage(chatID, "Опиши трек одним сообщением (жанр, настроение, тема):\n\nИли /login → веб-студия.")
+		_ = b.max.SendMessage(chatID, "Опиши трек одним сообщением (жанр, настроение, тема).\nСтоимость: −1 кредит.\n\nИли /login → веб-студия (режимы Идея / Текст / Instrumental).")
 		b.sendLoginLink(chatID, userID)
 	default:
 		if st, ok := b.states.Load(userID); ok && st == "await_prompt" {
