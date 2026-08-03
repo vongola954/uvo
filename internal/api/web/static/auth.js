@@ -1,6 +1,7 @@
-/** UVO auth — HttpOnly session cookie (MAX /login code) + CSRF */
+/** UVO auth — MAX Mini App + HttpOnly cookie + CSRF */
 (function (global) {
   const TOKEN_KEY = 'uvo_token';
+  let maxAuthPromise = null;
 
   function getToken() {
     try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (_) { return ''; }
@@ -13,9 +14,46 @@
     } catch (_) {}
   }
 
+  function inMaxWebApp() {
+    try {
+      return !!(global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** Login via MAX Bridge initData when opened as mini-app inside MAX. */
+  function ensureMaxWebAppAuth() {
+    if (maxAuthPromise) return maxAuthPromise;
+    maxAuthPromise = (async () => {
+      try {
+        if (!inMaxWebApp()) return false;
+        const wa = global.WebApp;
+        try { if (typeof wa.ready === 'function') wa.ready(); } catch (_) {}
+        try { if (typeof wa.expand === 'function') wa.expand(); } catch (_) {}
+        const initData = wa.initData || '';
+        if (!initData) return false;
+        const res = await fetch('/api/auth/max-webapp', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json().catch(() => ({}));
+        if (data.token) setToken(data.token);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    })();
+    return maxAuthPromise;
+  }
+
   // One-time ?code= from MAX /login → HttpOnly cookie session
   (async function captureLoginCode() {
     try {
+      await ensureMaxWebAppAuth();
       const u = new URL(location.href);
       const code = u.searchParams.get('code');
       if (code) {
@@ -27,10 +65,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: code }),
         });
-        setToken(''); // prefer cookie session
+        setToken('');
         return;
       }
-      // Legacy ?token= deep links (pre-2.6.4)
       const t = u.searchParams.get('token');
       if (t) {
         setToken(t);
@@ -56,13 +93,16 @@
 
   async function api(path, opts) {
     opts = opts || {};
+    await ensureMaxWebAppAuth();
     const headers = authHeaders(opts.headers);
     if (opts.body instanceof FormData) {
       delete headers['Content-Type'];
     }
     const res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
     if (res.status === 401) {
-      const err = new Error('Нужна авторизация: в MAX-боте отправьте /login и откройте ссылку');
+      const err = new Error(inMaxWebApp()
+        ? 'Откройте студию кнопкой «Запуск» в боте MAX'
+        : 'Нужна авторизация: в MAX-боте /login или «Запуск»');
       err.status = 401;
       throw err;
     }
@@ -70,7 +110,8 @@
   }
 
   async function ensureDevToken() {
-    const me = await fetch('/api/auth/me', { credentials: 'include' });
+    await ensureMaxWebAppAuth();
+    const me = await fetch('/api/auth/me', { credentials: 'include', headers: authHeaders() });
     if (me.ok) {
       const data = await me.json();
       if (data.authenticated) return 'cookie';
@@ -90,7 +131,8 @@
 
   async function sessionOK() {
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      await ensureMaxWebAppAuth();
+      const res = await fetch('/api/auth/me', { credentials: 'include', headers: authHeaders() });
       if (!res.ok) return false;
       const data = await res.json();
       return !!data.authenticated;
@@ -123,7 +165,8 @@
     const status = el('span', { text: 'сессия: …' });
     status.id = 'uvo-auth-status';
     sessionOK().then((ok) => {
-      status.textContent = ok ? 'сессия: ok' : 'сессия: нет — MAX /login';
+      if (ok) status.textContent = inMaxWebApp() ? 'сессия: MAX' : 'сессия: ok';
+      else status.textContent = 'сессия: нет — кнопка «Запуск» в MAX';
     });
     const btn = el('button', {
       type: 'button',
@@ -132,7 +175,7 @@
       onclick: async () => {
         try {
           const t = await ensureDevToken();
-          status.textContent = t ? 'сессия: ok (demo)' : 'DEV_AUTH выключен — используйте /login в MAX';
+          status.textContent = t ? 'сессия: ok (demo)' : 'DEV_AUTH выключен — «Запуск» в MAX';
         } catch (e) {
           status.textContent = 'ошибка токена';
         }
@@ -143,5 +186,8 @@
     parent.prepend(bar);
   }
 
-  global.UVO = { getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK, el, mountAuthBar };
+  global.UVO = {
+    getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK,
+    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp,
+  };
 })(window);

@@ -97,13 +97,18 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.7.4", // hotfix: keep Dockerfile WEB_PUBLIC_URL fallback
+		MaxOn: maxC.Enabled(), Version: "2.7.5",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
+	} else if maxC.Enabled() && cfg.BotMode != "webhook" {
+		logrus.Warnf("BOT_MODE=%q — polling выключен (ожидается polling|webhook)", cfg.BotMode)
 	}
 	if cfg.BotMode == "webhook" && os.Getenv("MAX_WEBHOOK_SECRET") == "" {
 		logrus.Warn("BOT_MODE=webhook but MAX_WEBHOOK_SECRET is empty — webhook will reject all requests")
+	}
+	if !maxC.Enabled() {
+		logrus.Warn("MAX_BOT_TOKEN пуст — бот не отвечает")
 	}
 	if cfg.WebPublicURL == "" {
 		logrus.Warn("WEB_PUBLIC_URL пуст — задайте в Amvera env (clone/cover/YooKassa return)")
@@ -120,6 +125,6 @@ func main() {
 	if yoo == nil || !yoo.Enabled() {
 		logrus.Info("YOOKASSA_* не заданы — checkout недоступен (DEMO_TOPUP для локалки)")
 	}
-	logrus.Infof("UVO 2.7.4 on %s:%d (db=%s prod=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction())
+	logrus.Infof("UVO 2.7.5 on %s:%d (db=%s prod=%v bot=%s max=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled())
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

@@ -14,15 +14,15 @@ import (
 )
 
 type Bot struct {
-	max       *clients.MAXClient
-	gen       *services.GenerationService
-	limiter   *services.RateLimiter
-	credits   *services.CreditService
-	logins    *services.LoginCodeStore
-	states    sync.Map
-	marker    *int64
-	stop      chan struct{}
-	webURL    string
+	max     *clients.MAXClient
+	gen     *services.GenerationService
+	limiter *services.RateLimiter
+	credits *services.CreditService
+	logins  *services.LoginCodeStore
+	states  sync.Map
+	marker  *int64
+	stop    chan struct{}
+	webURL  string
 }
 
 func New(max *clients.MAXClient, gen *services.GenerationService, lim *services.RateLimiter, credits *services.CreditService, logins *services.LoginCodeStore) *Bot {
@@ -40,18 +40,21 @@ func (b *Bot) studioURL(path string) string {
 	return b.webURL + path
 }
 
-func (b *Bot) sendHome(chatID int64, extra string) {
+func (b *Bot) sendHome(chatID, userID int64, extra string) {
 	text := fmt.Sprintf(
 		"UVO — AI-студия музыки\n\n"+
 			"%d песни в подарок · 1 кредит = 1 песня\n"+
 			"Пакеты от 99₽ · кавер / караоке / свой голос\n\n"+
-			"/login — веб-студия · /generate — трек в чате · /credits — баланс",
+			"Нажми «Запуск» — студия откроется в MAX.\n"+
+			"/generate · /credits · /help",
 		services.FreeCredits,
 	)
 	if extra != "" {
 		text += "\n\n" + extra
 	}
-	_ = b.max.SendStudio(chatID, text, b.studioURL("/"))
+	if err := b.max.SendStudioTo(userID, chatID, text, b.studioURL("/")); err != nil {
+		logrus.WithError(err).Warn("sendHome failed")
+	}
 }
 
 func (b *Bot) StartPolling() {
@@ -60,11 +63,11 @@ func (b *Bot) StartPolling() {
 		return
 	}
 	if me, err := b.max.Me(); err != nil {
-		logrus.WithError(err).Warn("MAX /me failed")
+		logrus.WithError(err).Warn("MAX /me failed — проверьте MAX_BOT_TOKEN и platform-api2.max.ru")
 	} else {
 		logrus.WithField("me", me).Info("MAX bot online")
 	}
-	logrus.WithField("web", b.webURL).Info("MAX long-poll + web studio link")
+	logrus.WithFields(logrus.Fields{"web": b.webURL, "mode": "polling"}).Info("MAX long-poll + mini-app open_app")
 
 	for {
 		select {
@@ -94,127 +97,139 @@ func (b *Bot) StartPolling() {
 func (b *Bot) dispatch(u clients.MAXUpdate) {
 	switch u.UpdateType {
 	case "bot_started":
-		chatID := u.ChatID
-		b.sendHome(chatID, "Нажми кнопку студии или /generate")
+		chatID, userID := resolveChatUser(u)
+		logrus.WithFields(logrus.Fields{"chat_id": chatID, "user_id": userID}).Info("bot_started")
+		b.sendHome(chatID, userID, "Добро пожаловать!")
 	case "message_created":
-		text, chatID, userID := extractMessage(u)
+		text, chatID, userIDStr, userID := extractMessage(u)
 		if text == "" {
 			return
 		}
-		b.HandleText(userID, text, chatID)
+		b.HandleText(userIDStr, text, chatID, userID)
 	}
 }
 
-func extractMessage(u clients.MAXUpdate) (text string, chatID int64, userID string) {
+func resolveChatUser(u clients.MAXUpdate) (chatID, userID int64) {
 	chatID = u.ChatID
-	userID = "max_user"
 	if u.User != nil {
-		userID = strconv.FormatInt(u.User.UserID, 10)
+		userID = u.User.ID64()
 	}
 	if u.Message != nil {
 		if u.Message.ChatID != 0 {
 			chatID = u.Message.ChatID
 		}
-		if u.Message.Sender != nil {
-			userID = strconv.FormatInt(u.Message.Sender.UserID, 10)
+		if u.Message.Recipient != nil {
+			if u.Message.Recipient.ChatID != 0 {
+				chatID = u.Message.Recipient.ChatID
+			}
+			if userID == 0 && u.Message.Recipient.UserID != 0 {
+				userID = u.Message.Recipient.UserID
+			}
 		}
+		if u.Message.Sender != nil && userID == 0 {
+			userID = u.Message.Sender.ID64()
+		}
+	}
+	return chatID, userID
+}
+
+func extractMessage(u clients.MAXUpdate) (text string, chatID int64, userIDStr string, userID int64) {
+	chatID, userID = resolveChatUser(u)
+	userIDStr = "max_user"
+	if userID != 0 {
+		userIDStr = strconv.FormatInt(userID, 10)
+	}
+	if u.Message != nil {
 		if u.Message.Body != nil && u.Message.Body.Text != "" {
 			text = u.Message.Body.Text
 		} else if u.Message.Text != "" {
 			text = u.Message.Text
 		}
 	}
-	return strings.TrimSpace(text), chatID, userID
+	return strings.TrimSpace(text), chatID, userIDStr, userID
 }
 
-func (b *Bot) HandleText(userID, text string, chatID int64) {
-	// message buttons may send "/generate" as text
+func (b *Bot) HandleText(userIDStr, text string, chatID, userID int64) {
 	low := strings.TrimSpace(text)
 	switch {
 	case low == "/start" || low == "start":
-		b.sendHome(chatID, "Войти в веб: /login")
+		b.sendHome(chatID, userID, "")
 	case low == "/help" || low == "❓ /help":
-		_ = b.max.SendStudio(chatID,
-			"Команды:\n/generate — трек в чате (−1 кредит)\n/login — вход в веб-студию\n/credits — баланс\n/studio — ссылка\n/tracks — мои треки\n\n"+
-				fmt.Sprintf("%d бесплатно · пакеты от 99₽ в студии.", services.FreeCredits),
+		_ = b.max.SendStudioTo(userID, chatID,
+			"Команды:\n«Запуск» — веб-студия в MAX\n/generate — трек в чате (−1)\n/credits — баланс\n/login — ссылка с автологином\n\n"+
+				fmt.Sprintf("%d бесплатно · пакеты от 99₽.", services.FreeCredits),
 			b.studioURL("/"))
 	case low == "/credits" || low == "/balance":
 		bal := 0
 		if b.credits != nil {
-			bal = b.credits.Balance(userID)
+			bal = b.credits.Balance(userIDStr)
 		}
-		_ = b.max.SendStudio(chatID,
-			fmt.Sprintf("Баланс: %d кредитов\n1 кредит = 1 песня · кавер/караоке/клон −2\nПополнить: /login → Кредиты (от 99₽)", bal),
+		_ = b.max.SendStudioTo(userID, chatID,
+			fmt.Sprintf("Баланс: %d кредитов\n1 кредит = 1 песня · кавер/караоке/клон −2\nПополнить: «Запуск» → Кредиты", bal),
 			b.studioURL("/#pricing"))
 	case low == "/login" || low == "/web" || low == "/auth":
-		b.sendLoginLink(chatID, userID)
+		b.sendLoginLink(chatID, userID, userIDStr, "/")
 	case low == "/studio" || strings.Contains(low, "студи"):
-		b.sendLoginLink(chatID, userID)
+		b.sendHome(chatID, userID, "Открой «Запуск» ниже.")
 	case low == "/tracks":
-		b.sendLoginLinkTo(chatID, userID, "/tracks.html")
+		b.sendLoginLink(chatID, userID, userIDStr, "/tracks.html")
 	case low == "/feed":
-		b.sendLoginLinkTo(chatID, userID, "/feed.html")
+		b.sendLoginLink(chatID, userID, userIDStr, "/feed.html")
 	case low == "/playlists":
-		b.sendLoginLinkTo(chatID, userID, "/playlists.html")
+		b.sendLoginLink(chatID, userID, userIDStr, "/playlists.html")
 	case low == "/generate" || low == "⚡ /generate":
-		b.states.Store(userID, "await_prompt")
-		_ = b.max.SendMessage(chatID, "Опиши трек одним сообщением (жанр, настроение, тема).\nСтоимость: −1 кредит.\n\nИли /login → веб-студия (режимы Идея / Текст / Instrumental).")
-		b.sendLoginLink(chatID, userID)
+		b.states.Store(userIDStr, "await_prompt")
+		_ = b.max.SendMessageToUser(userID, chatID, "Опиши трек одним сообщением (жанр, настроение, тема).\nСтоимость: −1 кредит.\n\nИли «Запуск» → режимы Идея / Текст / Instrumental.")
 	default:
-		if st, ok := b.states.Load(userID); ok && st == "await_prompt" {
-			b.states.Delete(userID)
+		if st, ok := b.states.Load(userIDStr); ok && st == "await_prompt" {
+			b.states.Delete(userIDStr)
 			if b.credits != nil {
-				if err := b.credits.Spend(userID, 1); err != nil {
-					_ = b.max.SendMessage(chatID, "Нет кредитов: "+err.Error())
+				if err := b.credits.Spend(userIDStr, 1); err != nil {
+					_ = b.max.SendMessageToUser(userID, chatID, "Нет кредитов: "+err.Error())
 					return
 				}
 			}
-			if err := b.limiter.Allow(userID); err != nil {
+			if err := b.limiter.Allow(userIDStr); err != nil {
 				if b.credits != nil {
-					b.credits.Refund(userID, 1)
+					b.credits.Refund(userIDStr, 1)
 				}
-				_ = b.max.SendMessage(chatID, "Лимит: "+err.Error())
+				_ = b.max.SendMessageToUser(userID, chatID, "Лимит: "+err.Error())
 				return
 			}
-			_ = b.max.SendMessage(chatID, "Генерирую… 1–3 минуты")
+			_ = b.max.SendMessageToUser(userID, chatID, "Генерирую… 1–3 минуты")
 			go func() {
 				track, err := b.gen.Generate(&services.GenerateRequest{
-					UserID: userID, Prompt: text, Duration: 180,
+					UserID: userIDStr, Prompt: text, Duration: 180,
 				})
 				if err != nil {
 					if b.credits != nil {
-						b.credits.Refund(userID, 1)
+						b.credits.Refund(userIDStr, 1)
 					}
 					msg := "Операция не удалась. Попробуйте позже."
 					if pe := clients.AsProviderError(err); pe != nil {
 						msg = pe.Message
 					}
-					_ = b.max.SendMessage(chatID, "Ошибка: "+msg)
+					_ = b.max.SendMessageToUser(userID, chatID, "Ошибка: "+msg)
 					return
 				}
-				play := b.studioURL("/tracks.html")
-				_ = b.max.SendStudio(chatID,
-					fmt.Sprintf("Готово: %s (id %d)\nСлушай в веб-студии (/login):", track.Title, track.ID),
-					play)
+				_ = b.max.SendStudioTo(userID, chatID,
+					fmt.Sprintf("Готово: %s (id %d)\nСлушай в студии («Запуск»):", track.Title, track.ID),
+					b.studioURL("/tracks.html"))
 			}()
 			return
 		}
-		b.sendHome(chatID, "Не понял. /help · /login · /generate")
+		b.sendHome(chatID, userID, "Не понял. /help · «Запуск» · /generate")
 	}
 }
 
-func (b *Bot) sendLoginLink(chatID int64, userID string) {
-	b.sendLoginLinkTo(chatID, userID, "/")
-}
-
-func (b *Bot) sendLoginLinkTo(chatID int64, userID, path string) {
+func (b *Bot) sendLoginLink(chatID, userID int64, userIDStr, path string) {
 	if b.logins == nil {
-		_ = b.max.SendStudio(chatID, "Студия (без автологина):", b.studioURL(path))
+		_ = b.max.SendStudioTo(userID, chatID, "Студия:", b.studioURL(path))
 		return
 	}
-	code, err := b.logins.Issue(userID, 15*time.Minute)
+	code, err := b.logins.Issue(userIDStr, 15*time.Minute)
 	if err != nil {
-		_ = b.max.SendMessage(chatID, "Не удалось выдать код входа")
+		_ = b.max.SendMessageToUser(userID, chatID, "Не удалось выдать код входа")
 		return
 	}
 	sep := "?"
@@ -222,7 +237,7 @@ func (b *Bot) sendLoginLinkTo(chatID int64, userID, path string) {
 		sep = "&"
 	}
 	url := b.studioURL(path) + sep + "code=" + code
-	_ = b.max.SendStudio(chatID, "Вход в UVO (одноразовая ссылка, 15 минут):", url)
+	_ = b.max.SendStudioTo(userID, chatID, "Одноразовая ссылка (15 мин) или кнопка «Запуск»:", url)
 }
 
 func (b *Bot) HandleWebhookUpdate(u clients.MAXUpdate) {

@@ -53,7 +53,15 @@ postgres://USER:PASSWORD@amvera-LOGIN-cnpg-DBPROJECT-rw:5432/DBNAME?sslmode=disa
 Спецсимволы в пароле — URL-encode.
 
 Webhook ЮKassa: `https://YOUR_DOMAIN/api/payments/yookassa`  
-Проверка: `GET /health` → `"version":"2.7.4"`, `"yookassa":true` после ключей.
+Проверка: `GET /health` → `"version":"2.7.5"`, `"yookassa":true` после ключей.
+
+### MAX мини-приложение (кнопка «Запуск» в чате)
+
+1. [Платформа партнёров](https://business.max.ru/) → Чат-боты → ваш бот → **Расширенные настройки**
+2. URL мини-приложения: `https://uvo-baskakovanton.amvera.io/` (тот же `WEB_PUBLIC_URL`)
+3. Вид кнопки: **Старт** / **Открыть**
+4. Amvera env: `BOT_MODE=polling`, `MAX_BOT_TOKEN`, `WEB_PUBLIC_URL`
+5. В чате с ботом: `/start` → кнопка **Запуск** открывает студию внутри MAX
 
 **Важно:** `WEB_PUBLIC_URL` задаётся только в переменных Amvera (в Docker image больше не зашит).
 

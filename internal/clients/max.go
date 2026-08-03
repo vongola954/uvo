@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type MAXClient struct {
@@ -31,18 +33,50 @@ func NewMAXClient(token, baseURL string) *MAXClient {
 func (m *MAXClient) Enabled() bool { return m.token != "" }
 
 func (m *MAXClient) auth(req *http.Request) {
+	// MAX platform: Authorization: <access_token> (no Bearer prefix)
 	req.Header.Set("Authorization", m.token)
 }
 
-// SendMessage plain text
+// SendMessage plain text to chat (or user dialog if chatID=0 and userID set).
 func (m *MAXClient) SendMessage(chatID int64, text string) error {
 	return m.send(0, chatID, map[string]interface{}{"text": text})
 }
 
-// SendStudio opens web UI via inline link button (MAX keyboard)
+func (m *MAXClient) SendMessageToUser(userID, chatID int64, text string) error {
+	return m.send(userID, chatID, map[string]interface{}{"text": text})
+}
+
+// SendStudio opens mini-app via open_app («Запуск») + quick actions.
+// Requires mini-app URL configured in MAX partner cabinet for this bot.
 func (m *MAXClient) SendStudio(chatID int64, text, studioURL string) error {
-	if studioURL == "" {
-		return m.SendMessage(chatID, text)
+	return m.SendStudioTo(0, chatID, text, studioURL)
+}
+
+func (m *MAXClient) SendStudioTo(userID, chatID int64, text, studioURL string) error {
+	if text == "" {
+		text = "UVO — студия"
+	}
+	openApp := map[string]interface{}{
+		"type": "open_app",
+		"text": "Запуск",
+	}
+	// Optional deep-link URL; partner cabinet URL is still required for in-MAX window.
+	if studioURL != "" {
+		openApp["web_app"] = studioURL
+	}
+	buttons := [][]map[string]interface{}{
+		{openApp},
+		{
+			{"type": "message", "text": "/generate"},
+			{"type": "message", "text": "/credits"},
+			{"type": "message", "text": "/help"},
+		},
+	}
+	// Fallback if mini-app not configured in partner cabinet (opens external browser).
+	if studioURL != "" {
+		buttons = append(buttons, []map[string]interface{}{
+			{"type": "link", "text": "Открыть в браузере", "url": studioURL},
+		})
 	}
 	body := map[string]interface{}{
 		"text": text,
@@ -50,25 +84,20 @@ func (m *MAXClient) SendStudio(chatID int64, text, studioURL string) error {
 			{
 				"type": "inline_keyboard",
 				"payload": map[string]interface{}{
-					"buttons": [][]map[string]interface{}{
-						{
-							{"type": "link", "text": "🎵 Открыть веб-студию", "url": studioURL},
-						},
-						{
-							{"type": "message", "text": "⚡ /generate"},
-							{"type": "message", "text": "❓ /help"},
-						},
-					},
+					"buttons": buttons,
 				},
 			},
 		},
 	}
-	return m.send(0, chatID, body)
+	return m.send(userID, chatID, body)
 }
 
 func (m *MAXClient) send(userID, chatID int64, payload map[string]interface{}) error {
 	if m.token == "" {
 		return fmt.Errorf("MAX token not configured")
+	}
+	if chatID == 0 && userID == 0 {
+		return fmt.Errorf("max send: need chat_id or user_id")
 	}
 	q := url.Values{}
 	if chatID != 0 {
@@ -89,11 +118,25 @@ func (m *MAXClient) send(userID, chatID int64, payload map[string]interface{}) e
 		return err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
+		logrus.WithFields(logrus.Fields{
+			"status":  resp.StatusCode,
+			"chat_id": chatID,
+			"user_id": userID,
+			"body":    truncateRunes(string(b), 300),
+		}).Warn("MAX send message failed")
 		return fmt.Errorf("max messages %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 type MAXUpdatesResponse struct {
@@ -111,14 +154,29 @@ type MAXUpdate struct {
 
 type MAXUser struct {
 	UserID   int64  `json:"user_id"`
+	ID       int64  `json:"id"` // some payloads use id
 	Name     string `json:"name"`
 	Username string `json:"username"`
 	IsBot    bool   `json:"is_bot"`
 }
 
+func (u *MAXUser) ID64() int64 {
+	if u == nil {
+		return 0
+	}
+	if u.UserID != 0 {
+		return u.UserID
+	}
+	return u.ID
+}
+
 type MAXMessage struct {
 	Sender *MAXUser `json:"sender"`
-	Body   *struct {
+	Recipient *struct {
+		ChatID int64 `json:"chat_id"`
+		UserID int64 `json:"user_id"`
+	} `json:"recipient"`
+	Body *struct {
 		Text string `json:"text"`
 	} `json:"body"`
 	Text   string `json:"text"`
@@ -149,7 +207,7 @@ func (m *MAXClient) GetUpdates(marker *int64, timeoutSec int) (*MAXUpdatesRespon
 		return nil, err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("max updates %d: %s", resp.StatusCode, string(b))
 	}

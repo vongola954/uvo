@@ -50,7 +50,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.7.4"
+		d.Version = "2.7.5"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -104,6 +104,7 @@ func Register(r *gin.Engine, d *Deps) {
 
 	r.POST("/api/auth/token", d.authToken)
 	r.POST("/api/auth/exchange", d.authExchange)
+	r.POST("/api/auth/max-webapp", d.authMaxWebApp)
 	r.POST("/api/auth/logout", d.authLogout)
 	r.GET("/api/auth/me", d.authMe)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
@@ -199,6 +200,40 @@ func (d *Deps) authExchange(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"ok": true, "user_id": uid})
+}
+
+// authMaxWebApp: Mini App initData → session cookie + JWT (open inside MAX).
+func (d *Deps) authMaxWebApp(c *gin.Context) {
+	token := ""
+	if d.Cfg != nil {
+		token = d.Cfg.MAXBotToken
+	}
+	if token == "" {
+		middleware.AbortJSON(c, 503, "not_configured", "MAX_BOT_TOKEN не задан")
+		return
+	}
+	var req struct {
+		InitData string `json:"init_data"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.InitData) == "" {
+		middleware.AbortJSON(c, 400, "validation_error", "init_data обязателен")
+		return
+	}
+	uid, err := services.ValidateMaxWebAppInitData(req.InitData, token, time.Hour)
+	if err != nil {
+		middleware.AbortJSON(c, 401, "invalid_init_data", "не удалось проверить MAX WebApp данные")
+		return
+	}
+	if err := middleware.SetSessionCookie(c, d.Cfg.JWTSecret, uid); err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "session failed")
+		return
+	}
+	tok, err := middleware.IssueToken(d.Cfg.JWTSecret, uid, 7*24*time.Hour)
+	if err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "token failed")
+		return
+	}
+	c.JSON(200, gin.H{"ok": true, "user_id": uid, "token": tok, "session": "cookie"})
 }
 
 func (d *Deps) authLogout(c *gin.Context) {
@@ -559,7 +594,8 @@ func (d *Deps) botSimulate(c *gin.Context) {
 	if req.UserID == "" {
 		req.UserID = middleware.UserID(c)
 	}
-	d.MaxBot.HandleText(req.UserID, req.Text, req.ChatID)
+	uidNum, _ := strconv.ParseInt(req.UserID, 10, 64)
+	d.MaxBot.HandleText(req.UserID, req.Text, req.ChatID, uidNum)
 	c.JSON(200, gin.H{"ok": true})
 }
 
