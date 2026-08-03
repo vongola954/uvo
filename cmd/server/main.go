@@ -97,7 +97,7 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.7.4",
+		MaxOn: maxC.Enabled(), Version: "2.7.4", // hotfix: keep Dockerfile WEB_PUBLIC_URL fallback
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
