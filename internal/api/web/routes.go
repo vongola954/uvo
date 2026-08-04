@@ -51,7 +51,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.8.3"
+		d.Version = "2.8.4"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -76,13 +76,14 @@ func Register(r *gin.Engine, d *Deps) {
 		}
 		prodGuards := d.Cfg != nil && d.Cfg.ProductionGuardsActive()
 		slim := gin.H{
-			"status":        status,
-			"version":       d.Version,
-			"max_bot":       d.MaxOn,
-			"yookassa":      d.Yoo != nil && d.Yoo.Enabled(),
-			"dual_policy":   services.DualPolicyLabel(),
-			"lyrics_assist": strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "",
-			"prod_guards":   prodGuards,
+			"status":             status,
+			"version":            d.Version,
+			"max_bot":            d.MaxOn,
+			"yookassa":           d.Yoo != nil && d.Yoo.Enabled(),
+			"dual_policy":        services.DualPolicyLabel(),
+			"lyrics_assist":      strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "",
+			"prod_guards":        prodGuards,
+			"credits_unlimited":  services.CreditsUnlimited(),
 		}
 		// Full dump only with metrics token (ops).
 		tok := strings.TrimSpace(os.Getenv("METRICS_TOKEN"))

@@ -24,7 +24,24 @@ func testDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestCreditsUnlimitedBypass(t *testing.T) {
+	t.Setenv("CREDITS_UNLIMITED", "true")
+	db := testDB(t)
+	c := NewCreditService(db)
+	if c.Balance("u") != UnlimitedBalance {
+		t.Fatalf("balance %d", c.Balance("u"))
+	}
+	if err := c.Spend("u", 100); err != nil {
+		t.Fatal(err)
+	}
+	rl := NewRateLimiter(db)
+	if err := rl.Allow("u"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCreditSpendAtomic(t *testing.T) {
+	t.Setenv("CREDITS_UNLIMITED", "false")
 	db := testDB(t)
 	c := NewCreditService(db)
 	uid := "u1"

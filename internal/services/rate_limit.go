@@ -31,6 +31,9 @@ func NewRateLimiter(db *gorm.DB) *RateLimiter {
 
 // Allow records a generate event; rolls back the event if limits exceeded (insert-then-check).
 func (r *RateLimiter) Allow(userID string) error {
+	if CreditsUnlimited() {
+		return nil
+	}
 	now := time.Now()
 	hourAgo := now.Add(-time.Hour)
 	dayAgo := now.Add(-24 * time.Hour)

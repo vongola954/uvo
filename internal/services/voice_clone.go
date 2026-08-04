@@ -145,6 +145,9 @@ func (s *VoiceCloneService) findExisting(userID, name string) (*models.VoiceProf
 }
 
 func (s *VoiceCloneService) reserveQuota(userID string) error {
+	if CreditsUnlimited() {
+		return nil
+	}
 	s.quotaMu.Lock()
 	defer s.quotaMu.Unlock()
 	dayAgo := time.Now().Add(-24 * time.Hour)

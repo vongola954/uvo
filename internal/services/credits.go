@@ -14,6 +14,9 @@ import (
 // FreeCredits is the new-user grant (shown in pricing as «≈N песен»).
 const FreeCredits = 2
 
+// UnlimitedBalance is shown in UI when CREDITS_UNLIMITED=true (testing).
+const UnlimitedBalance = 99999
+
 type CreditService struct {
 	db   *gorm.DB
 	free int
@@ -21,6 +24,16 @@ type CreditService struct {
 
 func NewCreditService(db *gorm.DB) *CreditService {
 	return &CreditService{db: db, free: FreeCredits}
+}
+
+// CreditsUnlimited is true when CREDITS_UNLIMITED=1|true (testing: no spend / rate limits).
+func CreditsUnlimited() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CREDITS_UNLIMITED"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *CreditService) ensure(userID string) (*models.CreditBalance, error) {
@@ -46,6 +59,9 @@ func (c *CreditService) ensureTx(tx *gorm.DB, userID string) (*models.CreditBala
 }
 
 func (c *CreditService) Balance(userID string) int {
+	if CreditsUnlimited() {
+		return UnlimitedBalance
+	}
 	row, err := c.ensure(userID)
 	if err != nil {
 		return 0
@@ -55,6 +71,9 @@ func (c *CreditService) Balance(userID string) int {
 
 // Spend atomically decrements balance if enough credits exist.
 func (c *CreditService) Spend(userID string, n int) error {
+	if CreditsUnlimited() {
+		return nil
+	}
 	if n <= 0 {
 		return fmt.Errorf("invalid spend amount")
 	}
@@ -148,6 +167,9 @@ func (c *CreditService) SettlePaymentCAS(orderID, providerPaymentID string, cred
 
 // SpendTx locks the row inside an existing transaction (Postgres); SQLite ignores FOR UPDATE.
 func (c *CreditService) SpendTx(tx *gorm.DB, userID string, n int) error {
+	if CreditsUnlimited() {
+		return nil
+	}
 	if n <= 0 {
 		return fmt.Errorf("invalid spend amount")
 	}
