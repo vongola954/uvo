@@ -285,8 +285,44 @@
     parent.prepend(bar);
   }
 
+  /** Fetch media with session/Bearer and trigger a real file save (MAX WebView safe). */
+  async function downloadFile(url, filename) {
+    if (!url) throw new Error('Нет ссылки для скачивания');
+    await ensureMaxWebAppAuth();
+    const headers = {};
+    const tok = getToken();
+    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    let res;
+    try {
+      res = await fetch(url, { credentials: 'include', headers });
+    } catch (e) {
+      throw new Error('Нет связи с сервером — не удалось скачать');
+    }
+    if (!res.ok) {
+      let msg = 'Не удалось скачать трек (' + res.status + ')';
+      try {
+        const j = await res.json();
+        if (j && j.error && j.error.message) msg = j.error.message;
+        else if (typeof j.error === 'string') msg = j.error;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    if (!blob || blob.size < 64) throw new Error('Пустой файл трека');
+    const a = document.createElement('a');
+    const obj = URL.createObjectURL(blob);
+    a.href = obj;
+    a.download = filename || 'uvo-track.mp3';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(obj), 4000);
+    return true;
+  }
+
   global.UVO = {
     getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK,
-    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp, readInitData,
+    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp, readInitData, downloadFile,
   };
 })(window);

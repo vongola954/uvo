@@ -341,7 +341,7 @@
             <p id="track-title" class="font-semibold text-emerald-400 mb-3 text-sm"></p>
             <audio id="player" controls class="w-full"></audio>
             <div class="flex flex-wrap gap-2 mt-4">
-              <a id="dl-link" href="#" download class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать mp3</a>
+              <a id="dl-link" href="#" class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать mp3</a>
               <a id="stems-link" href="/tracks.html" class="btn-ghost text-xs px-4 py-2 rounded-xl">Минусовка (−2)</a>
               <button type="button" id="btn-close-result" class="btn-ghost text-xs px-4 py-2 rounded-xl">Закрыть</button>
             </div>
@@ -412,7 +412,7 @@
     </footer>
   </div>
 
-  <script src="/static/auth.js?v=2.8.4"></script>
+  <script src="/static/auth.js?v=2.8.5"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
@@ -937,7 +937,17 @@
         let t = (title || 'Трек') + ' · ' + (duration || '?') + 's';
         if (altPlayUrl) t += ' · есть v2';
         document.getElementById('track-title').textContent = t;
-        document.getElementById('dl-link').href = downloadUrl || playUrl;
+        const dl = document.getElementById('dl-link');
+        const dlUrl = downloadUrl || ('/tracks/' + trackId + '/download');
+        dl.href = dlUrl;
+        dl.onclick = async (e) => {
+          e.preventDefault();
+          try {
+            await UVO.downloadFile(dlUrl, 'uvo-track-' + (trackId || 'x') + '.mp3');
+          } catch (err) {
+            alert(err.message || 'Не удалось скачать');
+          }
+        };
         const stems = document.getElementById('stems-link');
         if (stems && trackId) stems.href = '/karaoke.html?id=' + trackId;
         let alt = document.getElementById('alt-link');

@@ -66,7 +66,7 @@ func mediaHMAC(name string, exp int64, secret string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-const trackDownloadTTL = time.Hour
+const trackDownloadTTL = 7 * 24 * time.Hour
 
 // TrackDownloadResource is the HMAC subject for signed track downloads.
 func TrackDownloadResource(trackID uint) string {

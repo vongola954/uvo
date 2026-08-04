@@ -21,6 +21,7 @@ type GenerationService struct {
 	aceClient     musicGenerator
 	aceMusic      musicGenerator
 	musicProvider string // auto | acedata | acemusic
+	mediaRoot     string
 	trackRepo     *repository.TrackRepository
 	userRepo      *repository.UserRepository
 }
@@ -29,6 +30,7 @@ func NewGenerationService(
 	ace *clients.AceDataClient,
 	aceMusic *clients.AceMusicClient,
 	musicProvider string,
+	mediaRoot string,
 	trackRepo *repository.TrackRepository,
 	userRepo *repository.UserRepository,
 ) *GenerationService {
@@ -48,6 +50,7 @@ func NewGenerationService(
 		aceClient:     aceGen,
 		aceMusic:      musicGen,
 		musicProvider: mp,
+		mediaRoot:     mediaRoot,
 		trackRepo:     trackRepo,
 		userRepo:      userRepo,
 	}
@@ -272,6 +275,9 @@ func shouldFallbackMusic(err error) bool {
 }
 
 func (s *GenerationService) getMediaRoot() string {
+	if s != nil && strings.TrimSpace(s.mediaRoot) != "" {
+		return s.mediaRoot
+	}
 	if root := os.Getenv("MEDIA_ROOT"); root != "" {
 		return root
 	}

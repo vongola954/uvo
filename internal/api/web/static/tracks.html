@@ -4,7 +4,7 @@
 <title>UVO — Треки</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.7.9"></script>
+<script src="/static/auth.js?v=2.8.5"></script>
 <style>body{background:#050507;color:#f4f4f5;font-family:system-ui}</style>
 </head><body class="p-6 max-w-2xl mx-auto">
 <a href="/" class="text-emerald-400 text-sm">← Студия</a>
@@ -138,7 +138,10 @@ async function load() {
       mk('В ленту', () => shareFeed(id));
       mk('Правка (−1)', () => editTrack(id, title));
       mk('Минусовка / караоке (−2)', () => { location.href = '/karaoke.html?id=' + id; });
-      mk('Скачать mp3', () => { location.href = '/tracks/' + id + '/download'; });
+      mk('Скачать mp3', () => {
+        UVO.downloadFile('/tracks/' + id + '/download', 'uvo-track-' + id + '.mp3')
+          .catch((e) => alert(e.message || 'Не удалось скачать'));
+      });
       mk('Портрет', () => openPortrait(id));
       card.appendChild(actions);
       el.appendChild(card);

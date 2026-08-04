@@ -51,7 +51,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.8.4"
+		d.Version = "2.8.5"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -297,9 +297,9 @@ func (d *Deps) playTrack(c *gin.Context) {
 		middleware.AbortJSON(c, 403, "forbidden", "not your track")
 		return
 	}
-	safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, track.FilePath)
+	safe, err := services.ResolveTrackFile(d.Cfg.MediaRoot, track.FilePath)
 	if err != nil {
-		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
+		middleware.AbortJSON(c, 404, "not_found", "файл трека не найден")
 		return
 	}
 	c.File(safe)
@@ -328,16 +328,19 @@ func (d *Deps) downloadTrack(c *gin.Context) {
 		middleware.AbortJSON(c, 403, "forbidden", "not your track")
 		return
 	}
-	safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, track.FilePath)
+	safe, err := services.ResolveTrackFile(d.Cfg.MediaRoot, track.FilePath)
 	if err != nil {
-		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
+		middleware.AbortJSON(c, 404, "not_found", "файл трека не найден (перегенерируйте)")
 		return
 	}
 	name := filepath.Base(safe)
-	if name == "" || name == "." {
-		name = fmt.Sprintf("track-%d.mp3", id)
+	if name == "" || name == "." || !strings.HasSuffix(strings.ToLower(name), ".mp3") {
+		name = fmt.Sprintf("uvo-track-%d.mp3", id)
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	// ASCII filename= + RFC 5987 filename* — WebViews often mishandle Go %q quoting.
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, name, name))
+	c.Header("Content-Type", "audio/mpeg")
+	c.Header("Cache-Control", "private, max-age=3600")
 	c.File(safe)
 }
 
@@ -374,9 +377,9 @@ func (d *Deps) serveTrackSide(c *gin.Context, which string) {
 		c.Redirect(302, path)
 		return
 	}
-	safe, err := services.SafeMediaPath(d.Cfg.MediaRoot, path)
+	safe, err := services.ResolveTrackFile(d.Cfg.MediaRoot, path)
 	if err != nil {
-		middleware.AbortJSON(c, 403, "forbidden", "forbidden path")
+		middleware.AbortJSON(c, 404, "not_found", which+" файл не найден")
 		return
 	}
 	c.File(safe)
