@@ -6,8 +6,9 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /uvo ./cmd/server
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates \
-    && adduser -D -H -u 10001 uvo
+# Copy CA bundle from build image — avoid `apk` (Amvera builders often cannot reach Alpine CDN).
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN adduser -D -H -u 10001 uvo
 WORKDIR /app
 COPY --from=build /uvo .
 COPY internal/api/web/static ./internal/api/web/static
