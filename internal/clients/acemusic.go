@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,6 +113,13 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
+		if isTimeoutErr(err) {
+			return nil, &ProviderError{
+				Code:    "provider_timeout",
+				Message: "AceMusic не ответил вовремя. Выберите длину 1 мин и попробуйте снова.",
+				Status:  504,
+			}
+		}
 		return nil, fmt.Errorf("acemusic request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -180,16 +191,38 @@ func buildAceMusicContent(req *GenerateRequest) string {
 }
 
 func clampAceMusicDuration(sec int) int {
-	if sec <= 0 {
-		return 60
+	// Free AceMusic cloud often stalls on long tracks; keep requests short.
+	maxSec := 90
+	if v := strings.TrimSpace(os.Getenv("ACEMUSIC_MAX_DURATION")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 15 && n <= 240 {
+			maxSec = n
+		}
 	}
-	if sec > 240 {
-		return 240
+	if sec <= 0 {
+		sec = 60
+	}
+	if sec > maxSec {
+		sec = maxSec
 	}
 	if sec < 15 {
-		return 15
+		sec = 15
 	}
 	return sec
+}
+
+func isTimeoutErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
 func parseAceMusicCompletion(raw []byte) (clips []*GenerateResponse, title, lyric string, err error) {

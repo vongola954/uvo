@@ -252,9 +252,9 @@
             <div>
               <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Длина</label>
               <select id="duration">
-                <option value="60">1 мин</option>
-                <option value="180" selected>3 мин</option>
-                <option value="300">5 мин</option>
+                <option value="60" selected>1 мин (рекомендуется)</option>
+                <option value="90">1.5 мин</option>
+                <option value="180">3 мин</option>
               </select>
             </div>
           </div>
@@ -262,8 +262,8 @@
             <div>
               <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Провайдер</label>
               <select id="music-provider">
-                <option value="auto" selected>Авто (AceData → AceMusic)</option>
-                <option value="acemusic">AceMusic</option>
+                <option value="acemusic" selected>AceMusic</option>
+                <option value="auto">Авто (AceData → AceMusic)</option>
                 <option value="acedata">AceData / Suno</option>
               </select>
             </div>
@@ -412,7 +412,7 @@
     </footer>
   </div>
 
-  <script src="/static/auth.js?v=2.8.1"></script>
+  <script src="/static/auth.js?v=2.8.2"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
@@ -971,10 +971,23 @@
         }
         if (data.job_id) {
           let done = false;
+          let misses = 0;
+          const statusEl = document.getElementById('status-text');
           while (!done) {
             await new Promise(r => setTimeout(r, 2500));
-            const jobRes = await UVO.api('/api/jobs/' + data.job_id);
-            const job = await jobRes.json();
+            if (statusEl && provider === 'acemusic') {
+              statusEl.textContent = 'AceMusic пишет трек (до ~10 мин)...';
+            }
+            let jobRes;
+            try {
+              jobRes = await UVO.api('/api/jobs/' + data.job_id);
+              misses = 0;
+            } catch (pollErr) {
+              misses += 1;
+              if (misses >= 4) throw pollErr;
+              continue;
+            }
+            const job = await jobRes.json().catch(() => ({}));
             if (job.status === 'done') {
               stopProgress(true);
               showResult(

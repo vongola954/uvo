@@ -169,13 +169,33 @@
     if (opts.body instanceof FormData) {
       delete headers['Content-Type'];
     }
-    const res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
+    let res;
+    try {
+      res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
+    } catch (e) {
+      // One retry — MAX WebView often drops idle connections during long AceMusic waits.
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
+      } catch (e2) {
+        const err = new Error('Нет связи с сервером. Проверьте сеть и нажмите «Запуск» снова.');
+        err.cause = e2;
+        throw err;
+      }
+    }
     if (res.status === 401) {
       maxAuthPromise = null;
       await ensureMaxWebAppAuth();
       const headers2 = authHeaders(opts.headers);
       if (opts.body instanceof FormData) delete headers2['Content-Type'];
-      const res2 = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers: headers2 }));
+      let res2;
+      try {
+        res2 = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers: headers2 }));
+      } catch (e) {
+        const err = new Error('Нет связи с сервером. Проверьте сеть и нажмите «Запуск» снова.');
+        err.cause = e;
+        throw err;
+      }
       if (res2.status !== 401) return res2;
       const err = new Error(inMaxWebApp()
         ? (ok
