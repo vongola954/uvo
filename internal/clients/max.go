@@ -8,15 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 type MAXClient struct {
-	token   string
-	baseURL string
-	client  *http.Client
+	token    string
+	baseURL  string
+	username string // bot username for open_app deep links (max.ru/<user>?startapp)
+	client   *http.Client
 }
 
 func NewMAXClient(token, baseURL string) *MAXClient {
@@ -31,6 +33,19 @@ func NewMAXClient(token, baseURL string) *MAXClient {
 }
 
 func (m *MAXClient) Enabled() bool { return m.token != "" }
+
+// SetUsername sets bot @username used for open_app (without @).
+func (m *MAXClient) SetUsername(username string) {
+	m.username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+}
+
+// StartAppURL is the in-MAX mini-app deep link required by open_app.
+func (m *MAXClient) StartAppURL() string {
+	if m.username == "" {
+		return ""
+	}
+	return "https://max.ru/" + m.username + "?startapp"
+}
 
 func (m *MAXClient) auth(req *http.Request) {
 	// MAX platform: Authorization: <access_token> (no Bearer prefix)
@@ -47,8 +62,8 @@ func (m *MAXClient) SendMessageToUser(userID, chatID int64, text string) error {
 }
 
 // SendStudio sends studio CTA + quick actions.
-// open_app works only after mini-app URL is registered in MAX partner cabinet;
-// otherwise we fall back to a link button «Запуск» (must not fail the whole reply).
+// open_app requires partner-cabinet mini-app + web_app=https://max.ru/<bot>?startapp
+// (direct https studio URL returns 404 from MAX API).
 func (m *MAXClient) SendStudio(chatID int64, text, studioURL string) error {
 	return m.SendStudioTo(0, chatID, text, studioURL)
 }
@@ -63,20 +78,20 @@ func (m *MAXClient) SendStudioTo(userID, chatID int64, text, studioURL string) e
 		{"type": "message", "text": "/help"},
 	}
 
-	// 1) Try in-MAX mini-app button (requires partner cabinet registration).
-	if studioURL != "" {
+	// 1) In-MAX window via open_app deep link.
+	if start := m.StartAppURL(); start != "" {
 		openApp := [][]map[string]interface{}{
-			{{"type": "open_app", "text": "Запуск", "web_app": studioURL}},
+			{{"type": "open_app", "text": "Запуск", "web_app": start}},
 			quick,
 		}
-		if err := m.sendKeyboard(userID, chatID, text, openApp); err == nil {
-			return nil
+		if err := m.sendKeyboard(userID, chatID, text, openApp); err != nil {
+			logrus.WithError(err).Info("open_app failed — falling back to link Запуск")
 		} else {
-			logrus.WithError(err).Info("open_app unavailable — falling back to link Запуск")
+			return nil
 		}
 	}
 
-	// 2) Reliable fallback: link + command buttons (always deliver a reply).
+	// 2) Reliable fallback: https link + command buttons.
 	buttons := [][]map[string]interface{}{quick}
 	if studioURL != "" {
 		buttons = [][]map[string]interface{}{
@@ -269,5 +284,8 @@ func (m *MAXClient) Me() (map[string]interface{}, error) {
 	}
 	var out map[string]interface{}
 	_ = json.Unmarshal(b, &out)
+	if u, ok := out["username"].(string); ok && u != "" {
+		m.SetUsername(u)
+	}
 	return out, nil
 }

@@ -65,7 +65,7 @@ func (b *Bot) StartPolling() {
 	if me, err := b.max.Me(); err != nil {
 		logrus.WithError(err).Warn("MAX /me failed — проверьте MAX_BOT_TOKEN и platform-api2.max.ru")
 	} else {
-		logrus.WithField("me", me).Info("MAX bot online")
+		logrus.WithFields(logrus.Fields{"me": me, "startapp": b.max.StartAppURL()}).Info("MAX bot online")
 	}
 	if err := b.max.SetCommands([]map[string]string{
 		{"name": "start", "description": "Открыть UVO / Запуск"},
