@@ -67,7 +67,19 @@ func (b *Bot) StartPolling() {
 	} else {
 		logrus.WithField("me", me).Info("MAX bot online")
 	}
-	logrus.WithFields(logrus.Fields{"web": b.webURL, "mode": "polling"}).Info("MAX long-poll + mini-app open_app")
+	if err := b.max.SetCommands([]map[string]string{
+		{"name": "start", "description": "Открыть UVO / Запуск"},
+		{"name": "help", "description": "Помощь"},
+		{"name": "credits", "description": "Баланс кредитов"},
+		{"name": "generate", "description": "Сгенерировать трек"},
+		{"name": "login", "description": "Ссылка входа в студию"},
+		{"name": "studio", "description": "Веб-студия"},
+	}); err != nil {
+		logrus.WithError(err).Warn("MAX set commands failed")
+	} else {
+		logrus.Info("MAX slash commands registered")
+	}
+	logrus.WithFields(logrus.Fields{"web": b.webURL, "mode": "polling"}).Info("MAX long-poll + studio CTA")
 
 	for {
 		select {

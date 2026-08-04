@@ -2,7 +2,7 @@
 
 Go · Gin · AceData Suno · MAX bot · Web studio
 
-**Version: 2.7.5**
+**Version: 2.7.6**
 
 ## Quick start
 
@@ -50,7 +50,7 @@ METRICS_TOKEN=<random>       # для /metrics и /health?full=1
 
 `UVO_ALLOW_INSECURE=true` **игнорируется**, если `WEB_PUBLIC_URL` — публичный HTTPS.
 
-Вход в веб на проде: MAX **`/login`** → one-time code → cookie.
+Вход в веб на проде: кнопка **«Запуск»** в MAX (mini-app) или **`/login`** → one-time code → cookie.
 
 ## Оплата
 - Пакеты: `GET /api/credits` (входной `pack5` @ 99₽).
@@ -63,8 +63,9 @@ METRICS_TOKEN=<random>       # для /metrics и /health?full=1
 - Черновик текста: `POST /api/lyrics/assist` (нужен `OPENAI_API_KEY`, без списания кредита музыки)
 
 ## Docs
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** — ключевые моменты, версии, MAX, деплой, открытые задачи
 - [COST.md](COST.md) — unit economics / dual gate
-- [EPOCH13.md](EPOCH13.md) — текущий engineering sprint
-- [AUDIT.md](AUDIT.md) — security audit snapshot
+- [deploy/AMVERA.md](deploy/AMVERA.md) — прод на Amvera
+- [docs/archive/](docs/archive/) — эпохи 1–15, старый аудит и планы
 
 Remote: https://github.com/vongola954/uvo · deploy: Amvera `amvera` remote

@@ -46,8 +46,9 @@ func (m *MAXClient) SendMessageToUser(userID, chatID int64, text string) error {
 	return m.send(userID, chatID, map[string]interface{}{"text": text})
 }
 
-// SendStudio opens mini-app via open_app («Запуск») + quick actions.
-// Requires mini-app URL configured in MAX partner cabinet for this bot.
+// SendStudio sends studio CTA + quick actions.
+// open_app works only after mini-app URL is registered in MAX partner cabinet;
+// otherwise we fall back to a link button «Запуск» (must not fail the whole reply).
 func (m *MAXClient) SendStudio(chatID int64, text, studioURL string) error {
 	return m.SendStudioTo(0, chatID, text, studioURL)
 }
@@ -56,28 +57,37 @@ func (m *MAXClient) SendStudioTo(userID, chatID int64, text, studioURL string) e
 	if text == "" {
 		text = "UVO — студия"
 	}
-	openApp := map[string]interface{}{
-		"type": "open_app",
-		"text": "Запуск",
+	quick := []map[string]interface{}{
+		{"type": "message", "text": "/generate"},
+		{"type": "message", "text": "/credits"},
+		{"type": "message", "text": "/help"},
 	}
-	// Optional deep-link URL; partner cabinet URL is still required for in-MAX window.
+
+	// 1) Try in-MAX mini-app button (requires partner cabinet registration).
 	if studioURL != "" {
-		openApp["web_app"] = studioURL
+		openApp := [][]map[string]interface{}{
+			{{"type": "open_app", "text": "Запуск", "web_app": studioURL}},
+			quick,
+		}
+		if err := m.sendKeyboard(userID, chatID, text, openApp); err == nil {
+			return nil
+		} else {
+			logrus.WithError(err).Info("open_app unavailable — falling back to link Запуск")
+		}
 	}
-	buttons := [][]map[string]interface{}{
-		{openApp},
-		{
-			{"type": "message", "text": "/generate"},
-			{"type": "message", "text": "/credits"},
-			{"type": "message", "text": "/help"},
-		},
-	}
-	// Fallback if mini-app not configured in partner cabinet (opens external browser).
+
+	// 2) Reliable fallback: link + command buttons (always deliver a reply).
+	buttons := [][]map[string]interface{}{quick}
 	if studioURL != "" {
-		buttons = append(buttons, []map[string]interface{}{
-			{"type": "link", "text": "Открыть в браузере", "url": studioURL},
-		})
+		buttons = [][]map[string]interface{}{
+			{{"type": "link", "text": "Запуск", "url": studioURL}},
+			quick,
+		}
 	}
+	return m.sendKeyboard(userID, chatID, text, buttons)
+}
+
+func (m *MAXClient) sendKeyboard(userID, chatID int64, text string, buttons [][]map[string]interface{}) error {
 	body := map[string]interface{}{
 		"text": text,
 		"attachments": []map[string]interface{}{
@@ -90,6 +100,30 @@ func (m *MAXClient) SendStudioTo(userID, chatID int64, text, studioURL string) e
 		},
 	}
 	return m.send(userID, chatID, body)
+}
+
+// SetCommands registers slash-menu commands (fixes «Команды не найдены» in MAX UI).
+func (m *MAXClient) SetCommands(commands []map[string]string) error {
+	if m.token == "" {
+		return fmt.Errorf("MAX token not configured")
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"commands": commands})
+	req, err := http.NewRequest("PATCH", m.baseURL+"/me/commands", bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	m.auth(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("max set commands %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 func (m *MAXClient) send(userID, chatID int64, payload map[string]interface{}) error {
