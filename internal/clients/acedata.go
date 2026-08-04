@@ -55,13 +55,14 @@ type GenerateRequest struct {
 }
 
 type GenerateResponse struct {
-	AudioURL string
-	VideoURL string
-	AudioID  string
-	TaskID   string
-	Title    string
-	Duration float64
-	Lyric    string
+	AudioURL   string
+	VideoURL   string
+	AudioID    string
+	TaskID     string
+	Title      string
+	Duration   float64
+	Lyric      string
+	AudioBytes []byte // optional in-memory audio (AceMusic); skips HTTP download
 }
 
 // Real AceData response structures

@@ -156,11 +156,11 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 			return nil, fmt.Errorf("materialize audio: %w", err)
 		}
 	}
-	kind := ""
+	bytesLen := 0
 	if len(clips) > 0 {
-		kind = audioURLKind(clips[0].AudioURL)
+		bytesLen = len(clips[0].AudioBytes)
 	}
-	logrus.WithFields(logrus.Fields{"clips": len(clips), "audio_kind": kind}).Info("AceMusic create ok")
+	logrus.WithFields(logrus.Fields{"clips": len(clips), "audio_bytes": bytesLen}).Info("AceMusic create ok")
 	return clips, nil
 }
 
@@ -361,7 +361,7 @@ func looksLikeBase64Audio(s string) bool {
 	return true
 }
 
-// materializeAudio turns relative/API/raw-base64 refs into data: URLs SafeDownload can write.
+// materializeAudio loads audio into AudioBytes (no giant data: URL round-trip).
 func (c *AceMusicClient) materializeAudio(clip *GenerateResponse) error {
 	if clip == nil {
 		return fmt.Errorf("nil clip")
@@ -370,71 +370,64 @@ func (c *AceMusicClient) materializeAudio(clip *GenerateResponse) error {
 	if u == "" {
 		return fmt.Errorf("empty audio url")
 	}
-	if strings.HasPrefix(u, "data:") {
-		// Normalize / validate early so GenerationService gets a clean data URL.
-		b, mime, err := decodeDataURL(u)
-		if err != nil {
-			return err
-		}
-		if len(b) < 64 {
-			return fmt.Errorf("audio payload too small (%d bytes)", len(b))
-		}
-		clip.AudioURL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
-		return nil
+	var b []byte
+	var err error
+	switch {
+	case strings.HasPrefix(u, "data:"):
+		b, _, err = decodeDataURL(u)
+	case looksLikeBase64Audio(u):
+		b, err = decodeBase64Loose(u)
+	default:
+		b, err = c.fetchAudioBytes(u)
 	}
-	if looksLikeBase64Audio(u) {
-		b, err := decodeBase64Loose(u)
-		if err != nil {
-			return err
-		}
-		if len(b) < 64 {
-			return fmt.Errorf("audio payload too small (%d bytes)", len(b))
-		}
-		clip.AudioURL = "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString(b)
-		return nil
+	if err != nil {
+		return err
 	}
+	if len(b) < 64 {
+		return fmt.Errorf("audio payload too small (%d bytes)", len(b))
+	}
+	// Reject obvious non-audio HTML/JSON error bodies.
+	head := strings.ToLower(string(b[:min(64, len(b))]))
+	if strings.Contains(head, "<!doctype") || strings.Contains(head, "<html") ||
+		strings.HasPrefix(strings.TrimSpace(head), "{") {
+		return fmt.Errorf("audio payload looks like text/html or json, not audio")
+	}
+	clip.AudioBytes = b
+	clip.AudioURL = "" // prefer in-memory bytes in GenerationService
+	return nil
+}
 
+func (c *AceMusicClient) fetchAudioBytes(u string) ([]byte, error) {
 	full := u
 	if strings.HasPrefix(u, "/") {
 		full = c.baseURL + u
 	}
 	parsed, err := url.Parse(full)
 	if err != nil {
-		return fmt.Errorf("bad audio url: %w", err)
+		return nil, fmt.Errorf("bad audio url: %w", err)
 	}
 	if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		return fmt.Errorf("unsupported audio url scheme")
+		return nil, fmt.Errorf("unsupported audio url scheme")
 	}
-
 	req, err := http.NewRequest("GET", full, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// AceMusic /v1/audio and CDN mirrors often require the API key.
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "*/*")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetch audio: %w", err)
+		return nil, fmt.Errorf("fetch audio: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 40<<20))
 	if err != nil {
-		return fmt.Errorf("read audio: %w", err)
+		return nil, fmt.Errorf("read audio: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fetch audio HTTP %d: %s", resp.StatusCode, truncate(string(body), 160))
+		return nil, fmt.Errorf("fetch audio HTTP %d: %s", resp.StatusCode, truncate(string(body), 160))
 	}
-	if len(body) < 64 {
-		return fmt.Errorf("fetched audio too small (%d bytes)", len(body))
-	}
-	mime := resp.Header.Get("Content-Type")
-	if mime == "" || strings.Contains(mime, "text/") || strings.Contains(mime, "json") {
-		mime = "audio/mpeg"
-	}
-	mime = strings.Split(mime, ";")[0]
-	clip.AudioURL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(body)
-	return nil
+	return body, nil
 }
 
 func decodeDataURL(raw string) (data []byte, mime string, err error) {

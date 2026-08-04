@@ -69,6 +69,9 @@ func TestAceMusicGenerateAll(t *testing.T) {
 	if len(clips) != 1 {
 		t.Fatalf("want 1 clip, got %d", len(clips))
 	}
+	if len(clips[0].AudioBytes) < 64 {
+		t.Fatalf("want audio bytes, got %d", len(clips[0].AudioBytes))
+	}
 }
 
 func TestParseAceMusicHTTPErrorAuth(t *testing.T) {
@@ -128,7 +131,7 @@ func TestMaterializeRelativeAudio(t *testing.T) {
 	if err := c.materializeAudio(clip); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(clip.AudioURL, "data:audio/mpeg;base64,") {
-		t.Fatalf("%s", clip.AudioURL[:40])
+	if len(clip.AudioBytes) < 64 {
+		t.Fatalf("bytes=%d", len(clip.AudioBytes))
 	}
 }

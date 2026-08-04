@@ -124,11 +124,13 @@ func (s *GenerationService) GenerateAll(req *GenerateRequest) ([]*models.Track, 
 	for i, resp := range clips {
 		filename := uuid.New().String() + ".mp3"
 		filePath := filepath.Join(s.getMediaRoot(), filename)
-		if err := SafeDownload(resp.AudioURL, filePath, 30<<20); err != nil {
+		if err := saveClipAudio(resp, filePath, 30<<20); err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"path": filePath, "has_bytes": len(resp.AudioBytes), "url_kind": urlKind(resp.AudioURL),
+			}).Warn("save clip audio failed")
 			if i == 0 {
 				return nil, fmt.Errorf("download failed: %w", err)
 			}
-			logrus.WithError(err).Warn("skip variant download")
 			continue
 		}
 		title := resp.Title
@@ -274,6 +276,66 @@ func (s *GenerationService) getMediaRoot() string {
 		return root
 	}
 	return "./data/media"
+}
+
+func saveClipAudio(resp *clients.GenerateResponse, filePath string, maxBytes int64) error {
+	if resp == nil {
+		return fmt.Errorf("nil clip")
+	}
+	if len(resp.AudioBytes) > 0 {
+		if maxBytes > 0 && int64(len(resp.AudioBytes)) > maxBytes {
+			return fmt.Errorf("audio too large")
+		}
+		return os.WriteFile(filePath, resp.AudioBytes, 0644)
+	}
+	if strings.TrimSpace(resp.AudioURL) == "" {
+		return fmt.Errorf("no audio bytes or url")
+	}
+	return SafeDownload(resp.AudioURL, filePath, maxBytes)
+}
+
+func urlKind(u string) string {
+	switch {
+	case u == "":
+		return "empty"
+	case strings.HasPrefix(u, "data:"):
+		return "data"
+	case strings.HasPrefix(u, "https://"), strings.HasPrefix(u, "http://"):
+		return "http"
+	default:
+		return "other"
+	}
+}
+
+// EnsureMediaRootWritable creates MEDIA_ROOT or falls back to /tmp/uvo-media.
+func EnsureMediaRootWritable(root string) string {
+	if root == "" {
+		root = "./data/media"
+	}
+	try := func(dir string) error {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+		probe := filepath.Join(dir, ".write_test")
+		if err := os.WriteFile(probe, []byte("ok"), 0644); err != nil {
+			return err
+		}
+		_ = os.Remove(probe)
+		return nil
+	}
+	if err := try(root); err == nil {
+		return root
+	} else {
+		logrus.WithError(err).WithField("media_root", root).Warn("MEDIA_ROOT not writable")
+	}
+	fallback := "/tmp/uvo-media"
+	if err := try(fallback); err != nil {
+		logrus.WithError(err).Error("fallback media root also not writable")
+		return root
+	}
+	logrus.Warnf("using fallback MEDIA_ROOT=%s", fallback)
+	_ = os.Setenv("MEDIA_ROOT", fallback)
+	return fallback
 }
 
 func truncate(s string, n int) string {

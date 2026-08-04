@@ -28,7 +28,7 @@ func main() {
 	logger.Init(&logger.Config{Level: "info", OutputPath: cfg.LogPath})
 	_ = os.MkdirAll("./data", 0755)
 	_ = os.MkdirAll("./logs", 0755)
-	_ = os.MkdirAll(cfg.MediaRoot, 0755)
+	cfg.MediaRoot = services.EnsureMediaRootWritable(cfg.MediaRoot)
 
 	gdb, err := db.Open(cfg)
 	if err != nil {
@@ -101,7 +101,7 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.8.2",
+		MaxOn: maxC.Enabled(), Version: "2.8.3",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -129,6 +129,6 @@ func main() {
 	if yoo == nil || !yoo.Enabled() {
 		logrus.Info("YOOKASSA_* не заданы — checkout недоступен (DEMO_TOPUP для локалки)")
 	}
-	logrus.Infof("UVO 2.8.2 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider)
+	logrus.Infof("UVO 2.8.3 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }
