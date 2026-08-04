@@ -412,7 +412,7 @@
     </footer>
   </div>
 
-  <script src="/static/auth.js?v=2.8.5"></script>
+  <script src="/static/auth.js?v=2.8.6"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
@@ -854,10 +854,22 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
         stopProgress(true);
-        document.getElementById('player').src = d.play_url;
+        const playUrl = d.play_url;
+        const trackId = (d.track && (d.track.ID || d.track.id)) || d.track_id;
+        document.getElementById('player').src = playUrl;
         const t = d.track || {};
         document.getElementById('track-title').textContent = (t.Title || t.title || 'Cover') + ' · ' + (t.Duration || t.duration || '?') + 's';
-        document.getElementById('dl-link').href = d.play_url;
+        const dl = document.getElementById('dl-link');
+        const dlUrl = d.download_url || (trackId ? ('/tracks/' + trackId + '/download') : playUrl);
+        dl.href = dlUrl;
+        dl.onclick = async (e) => {
+          e.preventDefault();
+          try {
+            await UVO.downloadFile(dlUrl, 'uvo-track-' + (trackId || 'cover') + '.mp3');
+          } catch (err) {
+            alert(err.message || 'Не удалось скачать');
+          }
+        };
         result.classList.remove('hidden');
         const el = document.getElementById('credits-chip');
         if (el && d.balance != null) el.textContent = 'кредиты: ' + d.balance;

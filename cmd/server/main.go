@@ -101,7 +101,7 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.8.5",
+		MaxOn: maxC.Enabled(), Version: "2.8.6",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -132,6 +132,6 @@ func main() {
 	if services.CreditsUnlimited() {
 		logrus.Warn("CREDITS_UNLIMITED=true — кредиты и rate-limit отключены (только для тестов)")
 	}
-	logrus.Infof("UVO 2.8.5 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
+	logrus.Infof("UVO 2.8.6 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

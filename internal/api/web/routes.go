@@ -51,7 +51,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.8.5"
+		d.Version = "2.8.6"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -128,6 +128,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.POST("/generate", d.Generate)
 		api.GET("/jobs/:id", d.GetJob)
 		api.GET("/tracks", d.listTracks)
+		api.GET("/tracks/:id/download-url", d.trackDownloadURL)
 		api.PATCH("/tracks/:id/visibility", d.setTrackVisibility)
 		api.POST("/tracks/:id/karaoke", d.makeKaraoke)
 		api.POST("/tracks/:id/portrait", d.makePortrait)
@@ -409,6 +410,52 @@ func (d *Deps) serveMediaAsset(c *gin.Context) {
 func (d *Deps) listTracks(c *gin.Context) {
 	tracks, _ := d.Tracks.GetByUserID(middleware.UserID(c))
 	c.JSON(200, gin.H{"tracks": tracks})
+}
+
+// trackDownloadURL returns an absolute signed HTTPS URL for MAX WebApp.downloadFile.
+func (d *Deps) trackDownloadURL(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	track, err := d.Tracks.GetByID(uint(id))
+	if err != nil || track == nil {
+		middleware.AbortJSON(c, 404, "not_found", "not found")
+		return
+	}
+	uid := middleware.UserID(c)
+	if !track.IsPublic && track.UserID != uid {
+		middleware.AbortJSON(c, 403, "forbidden", "not your track")
+		return
+	}
+	if d.Cfg == nil {
+		middleware.AbortJSON(c, 500, "internal_error", "config missing")
+		return
+	}
+	if _, err := services.ResolveTrackFile(d.Cfg.MediaRoot, track.FilePath); err != nil {
+		middleware.AbortJSON(c, 404, "not_found", "файл трека не найден (перегенерируйте)")
+		return
+	}
+	path := services.SignTrackDownloadURL(track.ID, d.Cfg.JWTSecret)
+	base := strings.TrimRight(strings.TrimSpace(d.Cfg.WebPublicURL), "/")
+	if base == "" {
+		base = strings.TrimRight(c.Request.Host, "/")
+		if base != "" {
+			scheme := "https"
+			if c.Request.TLS == nil && strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "http") {
+				scheme = "http"
+			} else if c.Request.TLS == nil && c.GetHeader("X-Forwarded-Proto") == "" {
+				scheme = "https"
+			}
+			base = scheme + "://" + base
+		}
+	}
+	url := path
+	if base != "" && strings.HasPrefix(path, "/") {
+		url = base + path
+	}
+	c.JSON(200, gin.H{
+		"url":      url,
+		"path":     path,
+		"filename": fmt.Sprintf("uvo-track-%d.mp3", track.ID),
+	})
 }
 
 func (d *Deps) discover(c *gin.Context) {

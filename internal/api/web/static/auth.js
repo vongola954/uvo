@@ -285,16 +285,74 @@
     parent.prepend(bar);
   }
 
-  /** Fetch media with session/Bearer and trigger a real file save (MAX WebView safe). */
+  function toAbsoluteURL(url) {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/')) return (location.origin || '') + url;
+    return url;
+  }
+
+  function trackIdFromURL(url) {
+    const m = String(url || '').match(/\/tracks\/(\d+)(?:\/|$|\?)/);
+    return m ? m[1] : '';
+  }
+
+  /** Resolve a signed absolute HTTPS download URL (MAX native download cannot send Bearer). */
+  async function resolveDownloadURL(url, filename) {
+    let abs = toAbsoluteURL(url);
+    const tid = trackIdFromURL(url);
+    const hasSig = /[?&]sig=/.test(abs);
+    if (tid && !hasSig) {
+      const res = await api('/api/tracks/' + tid + '/download-url');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = (data.error && data.error.message) || data.error || ('HTTP ' + res.status);
+        throw new Error(typeof msg === 'string' ? msg : 'Не удалось получить ссылку');
+      }
+      abs = toAbsoluteURL(data.url || data.path || '');
+      if (data.filename && !filename) filename = data.filename;
+    }
+    if (!abs) throw new Error('Нет ссылки для скачивания');
+    return { url: abs, filename: filename || ('uvo-track' + (tid ? '-' + tid : '') + '.mp3') };
+  }
+
+  /**
+   * Download track: prefer MAX WebApp.downloadFile (native), then openLink, then blob.
+   * Must be called from a user gesture (click).
+   */
   async function downloadFile(url, filename) {
     if (!url) throw new Error('Нет ссылки для скачивания');
     await ensureMaxWebAppAuth();
+    const resolved = await resolveDownloadURL(url, filename);
+    const abs = resolved.url;
+    filename = resolved.filename;
+
+    const wa = global.WebApp;
+    if (wa && typeof wa.downloadFile === 'function') {
+      try {
+        const ret = wa.downloadFile(abs, filename);
+        if (ret && typeof ret.then === 'function') await ret;
+        return true;
+      } catch (e) {
+        console.warn('UVO: WebApp.downloadFile failed', e);
+      }
+    }
+    if (wa && typeof wa.openLink === 'function') {
+      try {
+        wa.openLink(abs);
+        return true;
+      } catch (e) {
+        console.warn('UVO: WebApp.openLink failed', e);
+      }
+    }
+
+    // Desktop / non-MAX fallback
     const headers = {};
     const tok = getToken();
     if (tok) headers['Authorization'] = 'Bearer ' + tok;
     let res;
     try {
-      res = await fetch(url, { credentials: 'include', headers });
+      res = await fetch(abs, { credentials: 'include', headers });
     } catch (e) {
       throw new Error('Нет связи с сервером — не удалось скачать');
     }
