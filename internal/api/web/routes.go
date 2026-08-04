@@ -51,7 +51,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.7.9"
+		d.Version = "2.8.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -92,13 +92,17 @@ func Register(r *gin.Engine, d *Deps) {
 			hedraOn := d.Hedra != nil && d.Hedra.Enabled()
 			slim["acedata"] = aceSt
 			slim["hedra_portrait"] = hedraOn
-			slim["music_provider"] = "acedata_only"
+			if d.Gen != nil {
+				slim["music_provider"] = d.Gen.ProviderLabel()
+			} else {
+				slim["music_provider"] = "acedata_only"
+			}
 			slim["db_driver"] = d.Cfg.DBDriver
 			slim["allow_anon"] = os.Getenv("ALLOW_ANON") == "true"
 			slim["dev_auth"] = os.Getenv("DEV_AUTH") == "true"
 			slim["demo_topup"] = os.Getenv("DEMO_TOPUP") == "true"
 			slim["web_public_url"] = d.Cfg.WebPublicURL
-			slim["hint"] = "При provider_balance_empty пополните AceData · вход: MAX /login"
+			slim["hint"] = "AceData или AceMusic (MUSIC_PROVIDER=auto) · вход: MAX /login"
 		}
 		c.JSON(200, slim)
 	})

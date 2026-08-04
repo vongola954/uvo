@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func TestSafeDownloadDataURL(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/t.mp3"
+	// "Hi" in base64
+	err := SafeDownload("data:audio/mpeg;base64,SGk=", path, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSafeDownloadRejectsHTTP(t *testing.T) {
 	err := SafeDownload("http://cdn1.suno.ai/x.mp3", "out.mp3", 1024)
 	if err == nil || err.Error() != "only https allowed" {

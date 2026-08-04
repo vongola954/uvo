@@ -51,6 +51,7 @@ type GenerateRequest struct {
 	Instrumental bool   `json:"instrumental,omitempty"`
 	Model        string `json:"model,omitempty"`
 	PersonaID    string `json:"persona_id,omitempty"`
+	Duration     int    `json:"duration,omitempty"` // seconds; used by AceMusic
 }
 
 type GenerateResponse struct {
@@ -169,14 +170,17 @@ func (c *AceDataClient) generateAsyncAll(req *GenerateRequest) ([]*GenerateRespo
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		logrus.WithFields(logrus.Fields{
+			"status": resp.StatusCode,
+			"body":   redactBody(body, 256),
+		}).Warn("AceData create failed")
+		return nil, ParseAceDataHTTPError(resp.StatusCode, body)
+	}
 	logrus.WithFields(logrus.Fields{
 		"status": resp.StatusCode,
 		"body":   redactBody(body, 256),
-	}).Debug("AceData create response")
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, ParseAceDataHTTPError(resp.StatusCode, body)
-	}
+	}).Info("AceData create ok")
 
 	var createResp aceCreateResponse
 	if err := json.Unmarshal(body, &createResp); err != nil {

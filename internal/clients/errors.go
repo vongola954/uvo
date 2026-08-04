@@ -77,8 +77,33 @@ func AsProviderError(err error) *ProviderError {
 		return pe
 	}
 	msg := err.Error()
-	if strings.Contains(msg, "provider_balance_empty") || strings.Contains(msg, "Баланс AceData") {
-		return &ProviderError{Code: "provider_balance_empty", Message: "Баланс AceData/Suno исчерпан. Пополните на https://platform.acedata.cloud", Status: 503}
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(msg, "provider_balance_empty") || strings.Contains(msg, "Баланс AceData") ||
+		strings.Contains(lower, "used_up") || strings.Contains(lower, "not sufficient"):
+		return &ProviderError{
+			Code:    "provider_balance_empty",
+			Message: "Баланс AceData/Suno исчерпан. Пополните на https://platform.acedata.cloud",
+			Status:  503,
+		}
+	case strings.Contains(lower, "timeout after"):
+		return &ProviderError{
+			Code:    "provider_timeout",
+			Message: "Suno не вернул трек вовремя. Попробуйте ещё раз или короткий промпт.",
+			Status:  504,
+		}
+	case strings.Contains(lower, "task failed"):
+		return &ProviderError{
+			Code:    "provider_error",
+			Message: "Suno отклонил задачу. Измените текст/стиль и попробуйте снова.",
+			Status:  502,
+		}
+	case strings.Contains(lower, "download failed") || strings.Contains(lower, "host not allowlisted"):
+		return &ProviderError{
+			Code:    "provider_error",
+			Message: "Не удалось скачать готовый трек. Попробуйте позже.",
+			Status:  502,
+		}
 	}
 	return nil
 }

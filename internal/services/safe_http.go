@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -18,6 +19,7 @@ var allowedHostSuffixes = []string{
 	"acedata.cloud",
 	"cdn1.suno.ai",
 	"cdn2.suno.ai",
+	"acemusic.ai",
 	"hedra.com",
 	"together.ai",
 	"klingai.com",
@@ -148,6 +150,9 @@ func SafeDownload(rawURL, destPath string, maxBytes int64) error {
 	if maxBytes <= 0 {
 		maxBytes = 30 << 20 // 30MB
 	}
+	if strings.HasPrefix(rawURL, "data:") {
+		return saveDataURL(rawURL, destPath, maxBytes)
+	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("bad url: %w", err)
@@ -171,4 +176,28 @@ func SafeDownload(rawURL, destPath string, maxBytes int64) error {
 	defer out.Close()
 	_, err = io.Copy(out, io.LimitReader(resp.Body, maxBytes))
 	return err
+}
+
+func saveDataURL(rawURL, destPath string, maxBytes int64) error {
+	comma := strings.Index(rawURL, ",")
+	if comma < 0 {
+		return fmt.Errorf("bad data url")
+	}
+	meta := rawURL[:comma]
+	payload := rawURL[comma+1:]
+	if !strings.Contains(meta, ";base64") {
+		return fmt.Errorf("data url must be base64")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		// some providers use raw/URL-safe
+		decoded, err = base64.RawStdEncoding.DecodeString(payload)
+		if err != nil {
+			return fmt.Errorf("decode data url: %w", err)
+		}
+	}
+	if int64(len(decoded)) > maxBytes {
+		return fmt.Errorf("data url too large")
+	}
+	return os.WriteFile(destPath, decoded, 0644)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -12,17 +13,43 @@ import (
 	"uvo/internal/repository"
 )
 
-type GenerationService struct {
-	aceClient *clients.AceDataClient
-	trackRepo *repository.TrackRepository
-	userRepo  *repository.UserRepository
+type musicGenerator interface {
+	GenerateAll(req *clients.GenerateRequest) ([]*clients.GenerateResponse, error)
 }
 
-func NewGenerationService(ace *clients.AceDataClient, trackRepo *repository.TrackRepository, userRepo *repository.UserRepository) *GenerationService {
+type GenerationService struct {
+	aceClient     musicGenerator
+	aceMusic      musicGenerator
+	musicProvider string // auto | acedata | acemusic
+	trackRepo     *repository.TrackRepository
+	userRepo      *repository.UserRepository
+}
+
+func NewGenerationService(
+	ace *clients.AceDataClient,
+	aceMusic *clients.AceMusicClient,
+	musicProvider string,
+	trackRepo *repository.TrackRepository,
+	userRepo *repository.UserRepository,
+) *GenerationService {
+	mp := strings.ToLower(strings.TrimSpace(musicProvider))
+	if mp == "" {
+		mp = "auto"
+	}
+	var aceGen musicGenerator
+	if ace != nil {
+		aceGen = ace
+	}
+	var musicGen musicGenerator
+	if aceMusic != nil && aceMusic.Enabled() {
+		musicGen = aceMusic
+	}
 	return &GenerationService{
-		aceClient: ace,
-		trackRepo: trackRepo,
-		userRepo:  userRepo,
+		aceClient:     aceGen,
+		aceMusic:      musicGen,
+		musicProvider: mp,
+		trackRepo:     trackRepo,
+		userRepo:      userRepo,
 	}
 }
 
@@ -38,6 +65,22 @@ type GenerateRequest struct {
 	PersonaID    string // AceData persona for generation
 	Instrumental bool
 	Title        string
+	Provider     string // optional override: auto|acedata|acemusic
+}
+
+func (s *GenerationService) ProviderLabel() string {
+	hasAce := s.aceClient != nil
+	hasMusic := s.aceMusic != nil
+	switch {
+	case hasAce && hasMusic:
+		return s.musicProvider + "+acedata+acemusic"
+	case hasMusic:
+		return "acemusic"
+	case hasAce:
+		return "acedata"
+	default:
+		return "none"
+	}
 }
 
 func (s *GenerationService) Generate(req *GenerateRequest) (*models.Track, error) {
@@ -66,10 +109,12 @@ func (s *GenerationService) GenerateAll(req *GenerateRequest) ([]*models.Track, 
 	aceReq := &clients.GenerateRequest{
 		Custom: req.Lyrics != "", Prompt: req.Prompt, Lyric: req.Lyrics, Style: req.Style,
 		Title: reqTitle, Instrumental: req.Instrumental, Model: "chirp-v5-5", PersonaID: req.PersonaID,
+		Duration: req.Duration,
 	}
-	clips, err := s.aceClient.GenerateAll(aceReq)
+
+	clips, providerUsed, err := s.generateClips(aceReq, req.Provider)
 	if err != nil {
-		return nil, fmt.Errorf("ace data generation failed: %w", err)
+		return nil, err
 	}
 	if err := os.MkdirAll(s.getMediaRoot(), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create media dir: %w", err)
@@ -125,9 +170,103 @@ func (s *GenerationService) GenerateAll(req *GenerateRequest) ([]*models.Track, 
 	if len(tracks) == 0 {
 		return nil, fmt.Errorf("no tracks saved")
 	}
-	logrus.WithFields(logrus.Fields{"track_id": tracks[0].ID, "variants": len(tracks), "user_id": req.UserID}).
-		Info("Track generated successfully")
+	logrus.WithFields(logrus.Fields{
+		"track_id": tracks[0].ID, "variants": len(tracks), "user_id": req.UserID, "provider": providerUsed,
+	}).Info("Track generated successfully")
 	return tracks, nil
+}
+
+func (s *GenerationService) generateClips(req *clients.GenerateRequest, override string) ([]*clients.GenerateResponse, string, error) {
+	order := s.providerOrder(override)
+	if len(order) == 0 {
+		return nil, "", fmt.Errorf("no music provider configured")
+	}
+	var lastErr error
+	for i, name := range order {
+		gen := s.generatorByName(name)
+		if gen == nil {
+			continue
+		}
+		// AceMusic ignores AceData persona; strip to avoid confusing provider.
+		callReq := *req
+		if name == "acemusic" {
+			callReq.PersonaID = ""
+			callReq.Model = ""
+		}
+		clips, err := gen.GenerateAll(&callReq)
+		if err == nil && len(clips) > 0 {
+			if i > 0 {
+				logrus.WithField("provider", name).Warn("music provider fallback succeeded")
+			}
+			return clips, name, nil
+		}
+		if err != nil {
+			lastErr = err
+			logrus.WithError(err).WithField("provider", name).Warn("music provider failed")
+			if !shouldFallbackMusic(err) || i == len(order)-1 {
+				return nil, name, fmt.Errorf("%s generation failed: %w", name, err)
+			}
+			continue
+		}
+		lastErr = fmt.Errorf("%s returned no clips", name)
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no music provider available")
+	}
+	return nil, "", lastErr
+}
+
+func (s *GenerationService) providerOrder(override string) []string {
+	raw := strings.ToLower(strings.TrimSpace(override))
+	if raw == "" {
+		raw = s.musicProvider
+	}
+	switch raw {
+	case "acedata":
+		return filterConfigured([]string{"acedata"}, s)
+	case "acemusic":
+		return filterConfigured([]string{"acemusic"}, s)
+	default: // auto
+		return filterConfigured([]string{"acedata", "acemusic"}, s)
+	}
+}
+
+func filterConfigured(names []string, s *GenerationService) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if s.generatorByName(n) != nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func (s *GenerationService) generatorByName(name string) musicGenerator {
+	switch name {
+	case "acedata":
+		return s.aceClient
+	case "acemusic":
+		return s.aceMusic
+	default:
+		return nil
+	}
+}
+
+func shouldFallbackMusic(err error) bool {
+	if err == nil {
+		return false
+	}
+	if pe := clients.AsProviderError(err); pe != nil {
+		switch pe.Code {
+		case "provider_balance_empty", "provider_auth", "provider_rate_limit", "provider_timeout":
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "used_up") ||
+		strings.Contains(msg, "not sufficient") ||
+		strings.Contains(msg, "invalid_token") ||
+		strings.Contains(msg, "timeout")
 }
 
 func (s *GenerationService) getMediaRoot() string {

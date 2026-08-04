@@ -258,9 +258,19 @@
               </select>
             </div>
           </div>
-          <div>
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
-            <select id="voice_id"><option value="">По умолчанию Suno</option></select>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Провайдер</label>
+              <select id="music-provider">
+                <option value="auto" selected>Авто (AceData → AceMusic)</option>
+                <option value="acemusic">AceMusic</option>
+                <option value="acedata">AceData / Suno</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
+              <select id="voice_id"><option value="">По умолчанию</option></select>
+            </div>
           </div>
           <div id="field-lyrics">
             <div class="flex items-center justify-between mb-2">
@@ -402,7 +412,7 @@
     </footer>
   </div>
 
-  <script src="/static/auth.js?v=2.7.9"></script>
+  <script src="/static/auth.js?v=2.8.0"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
@@ -843,7 +853,7 @@
         const res = await UVO.api('/api/cover', { method: 'POST', body: fd });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
-        stopProgress();
+        stopProgress(true);
         document.getElementById('player').src = d.play_url;
         const t = d.track || {};
         document.getElementById('track-title').textContent = (t.Title || t.title || 'Cover') + ' · ' + (t.Duration || t.duration || '?') + 's';
@@ -852,9 +862,8 @@
         const el = document.getElementById('credits-chip');
         if (el && d.balance != null) el.textContent = 'кредиты: ' + d.balance;
       } catch (e) {
-        stopProgress();
+        stopProgress(false);
         document.getElementById('status-text').textContent = 'Ошибка: ' + e.message;
-        document.getElementById('progress').style.width = '0%';
       } finally {
         btn.disabled = false;
       }
@@ -879,8 +888,13 @@
         if (v > 15 && v <= 35) { setStep(2); status.textContent = 'В очереди...'; }
         else if (v > 35) { setStep(3); status.textContent = 'Suno пишет трек...'; }
       }, 700);
-      return () => {
+      return (ok) => {
         clearInterval(t);
+        if (ok === false) {
+          bar.style.width = '0%';
+          pct.textContent = '';
+          return;
+        }
         bar.style.width = '100%';
         pct.textContent = '100%';
         setStep(4);
@@ -905,6 +919,7 @@
       const stopProgress = animateProgress();
 
       const mode = document.getElementById('gen-mode')?.value || genMode || 'idea';
+      const provider = document.getElementById('music-provider')?.value || 'auto';
       const body = {
         mode,
         prompt: document.getElementById('prompt').value,
@@ -912,7 +927,8 @@
         lyrics: document.getElementById('lyrics').value,
         duration: parseInt(document.getElementById('duration').value) || 180,
         instrumental: mode === 'instrumental' || document.getElementById('instrumental').value === '1',
-        voice_id: document.getElementById('voice_id').value || undefined,
+        voice_id: provider === 'acemusic' ? undefined : (document.getElementById('voice_id').value || undefined),
+        provider,
         request_id: (crypto.randomUUID && crypto.randomUUID()) || ('r-' + Date.now() + '-' + Math.random().toString(16).slice(2)),
       };
 
@@ -960,7 +976,7 @@
             const jobRes = await UVO.api('/api/jobs/' + data.job_id);
             const job = await jobRes.json();
             if (job.status === 'done') {
-              stopProgress();
+              stopProgress(true);
               showResult(
                 job.play_url || job.PlayURL,
                 job.title || job.Title,
@@ -975,7 +991,7 @@
             }
           }
         } else {
-          stopProgress();
+          stopProgress(true);
           showResult(data.play_url, data.title, data.duration, data.download_url, data.track_id, data.alt_play_url);
         }
         try {
@@ -985,9 +1001,8 @@
           if (el && cr.ok) el.textContent = 'кредиты: ' + d.balance;
         } catch (_) {}
       } catch (err) {
-        stopProgress();
+        stopProgress(false);
         document.getElementById('status-text').textContent = 'Ошибка: ' + err.message;
-        document.getElementById('progress').style.width = '0%';
       } finally {
         btn.disabled = false;
         btn.classList.remove('opacity-80');

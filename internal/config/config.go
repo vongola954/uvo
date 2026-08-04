@@ -36,6 +36,11 @@ type Config struct {
 	AceDataPollInterval int
 	AceDataMaxWait      int
 	SunoModel           string
+	AceMusicAPIKey      string
+	AceMusicBaseURL     string
+	AceMusicModel       string
+	AceMusicTimeout     int    // seconds for /v1/chat/completions
+	MusicProvider       string // auto | acedata | acemusic
 	LogPath             string // empty = stdout only (Amvera)
 	WebPublicURL        string // public base URL for AceData to fetch uploads
 }
@@ -67,8 +72,18 @@ func Load() (*Config, error) {
 		AceDataAsync:        getEnvBool("ACEDATA_ASYNC", true),
 		AceDataPollInterval: getEnvInt("ACEDATA_POLL_INTERVAL", 3),
 		AceDataMaxWait:      getEnvInt("ACEDATA_MAX_WAIT", 300),
+		AceMusicAPIKey:      os.Getenv("ACEMUSIC_API_KEY"),
+		AceMusicBaseURL:     getEnv("ACEMUSIC_BASE_URL", "https://api.acemusic.ai"),
+		AceMusicModel:       getEnv("ACEMUSIC_MODEL", "acemusic/acestep-v1.5-turbo"),
+		AceMusicTimeout:     getEnvInt("ACEMUSIC_TIMEOUT", 600),
+		MusicProvider:       strings.ToLower(strings.TrimSpace(getEnv("MUSIC_PROVIDER", "auto"))),
 		LogPath:             os.Getenv("LOG_PATH"),
 		WebPublicURL:        strings.TrimRight(os.Getenv("WEB_PUBLIC_URL"), "/"),
+	}
+	switch cfg.MusicProvider {
+	case "auto", "acedata", "acemusic":
+	default:
+		cfg.MusicProvider = "auto"
 	}
 
 	// PORT (PaaS) overrides WEB_PORT

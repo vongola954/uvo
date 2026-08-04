@@ -3,8 +3,10 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 	"uvo/internal/clients"
 	"uvo/internal/middleware"
 	"uvo/internal/models"
@@ -28,6 +30,7 @@ func (d *Deps) Generate(c *gin.Context) {
 		Title        string `json:"title"`
 		Sync         bool   `json:"sync"`
 		RequestID    string `json:"request_id"`
+		Provider     string `json:"provider"` // auto | acedata | acemusic
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
@@ -41,8 +44,12 @@ func (d *Deps) Generate(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
+	provider := strings.ToLower(strings.TrimSpace(req.Provider))
+	if provider == "" {
+		provider = "auto"
+	}
 	personaID := ""
-	if req.VoiceID != "" {
+	if req.VoiceID != "" && provider != "acemusic" {
 		if d.Voice == nil {
 			middleware.AbortJSON(c, 400, "validation_error", "voice service unavailable")
 			return
@@ -66,7 +73,7 @@ func (d *Deps) Generate(c *gin.Context) {
 	genReq := &services.GenerateRequest{
 		UserID: uid, Prompt: req.Prompt, Style: req.Style, Lyrics: req.Lyrics,
 		Duration: req.Duration, Instrumental: req.Instrumental, VoiceID: req.VoiceID,
-		PersonaID: personaID, Title: req.Title,
+		PersonaID: personaID, Title: req.Title, Provider: provider,
 	}
 
 	if req.Sync {
@@ -140,6 +147,10 @@ func (d *Deps) Generate(c *gin.Context) {
 			d.Credits.Refund(userID, 1)
 			msg := safeErrMessage(err)
 			middleware.IncGenFail()
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"job_id":  jobID,
+				"user_id": userID,
+			}).Warn("generate job failed")
 			d.Jobs.Update(jobID, func(j *models.JobRecord) {
 				j.Status = string(services.JobFailed)
 				j.Error = msg

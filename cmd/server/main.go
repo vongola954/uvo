@@ -37,6 +37,7 @@ func main() {
 	config.WarnInsecurePostgresSSL(cfg)
 
 	ace := clients.NewAceDataClient(cfg)
+	aceMusic := clients.NewAceMusicClient(cfg)
 	sf := clients.NewSiliconFlowClient(cfg.SiliconFlowKey)
 	el := clients.NewElevenLabsClient(cfg.ElevenLabsKey)
 	hedra := clients.NewHedraClient(os.Getenv("HEDRA_API_KEY"))
@@ -47,7 +48,10 @@ func main() {
 	userRepo := repository.NewUserRepository(gdb)
 	voiceRepo := repository.NewVoiceProfileRepository(gdb)
 
-	genSvc := services.NewGenerationService(ace, trackRepo, userRepo)
+	genSvc := services.NewGenerationService(ace, aceMusic, cfg.MusicProvider, trackRepo, userRepo)
+	if aceMusic != nil && aceMusic.Enabled() {
+		logrus.Infof("AceMusic enabled (MUSIC_PROVIDER=%s)", cfg.MusicProvider)
+	}
 	voiceSvc := services.NewVoiceCloneService(ace, sf, el, voiceRepo, userRepo, gdb, cfg.MediaRoot, cfg.WebPublicURL)
 	coverSvc := services.NewCoverService(ace, trackRepo, voiceSvc, cfg.MediaRoot, cfg.WebPublicURL)
 	karaokeSvc := services.NewKaraokeService(ace, trackRepo, gdb, cfg.MediaRoot, cfg.WebPublicURL)
@@ -97,7 +101,7 @@ func main() {
 		Social: socialSvc, Playlists: playlistSvc,
 		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.7.9",
+		MaxOn: maxC.Enabled(), Version: "2.8.0",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -125,6 +129,6 @@ func main() {
 	if yoo == nil || !yoo.Enabled() {
 		logrus.Info("YOOKASSA_* не заданы — checkout недоступен (DEMO_TOPUP для локалки)")
 	}
-	logrus.Infof("UVO 2.7.9 on %s:%d (db=%s prod=%v bot=%s max=%v)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled())
+	logrus.Infof("UVO 2.8.0 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

@@ -1,5 +1,7 @@
 # Деплой UVO на Amvera + PostgreSQL
 
+Сводка по проекту: [DEVELOPMENT.md](../DEVELOPMENT.md).
+
 Официально: [Docker](https://docs.amvera.ru/applications/configuration/docker.html) · [PostgreSQL](https://docs.amvera.ru/databases/postgreSQL.html)
 
 В репозитории: `Dockerfile`, `amvera.yml` (порт **8080**, volume **/data**).
@@ -30,6 +32,8 @@
 | `DATABASE_URL` или `PG*` | см. ниже | да |
 | `PGSSLMODE` | `disable` (Amvera internal) | нет |
 | `SUNO_API_KEY` | AceData | да |
+| `ACEMUSIC_API_KEY` | AceMusic (ACE-Step cloud) | да |
+| `MUSIC_PROVIDER` | `auto` / `acedata` / `acemusic` | нет |
 | `MAX_BOT_TOKEN` | MAX | да |
 | `JWT_SECRET` | длинная строка | да |
 | `MAX_WEBHOOK_SECRET` | для webhook mode | да |
@@ -71,7 +75,7 @@ Webhook ЮKassa: `https://YOUR_DOMAIN/api/payments/yookassa`
 
 - [ ] Порт контейнера **8080**
 - [ ] Postgres запущен, хост `-rw`
-- [ ] `SUNO_API_KEY`, `JWT_SECRET`, `WEB_PUBLIC_URL`
+- [ ] `SUNO_API_KEY` и/или `ACEMUSIC_API_KEY`, `JWT_SECRET`, `WEB_PUBLIC_URL`
 - [ ] `prod_guards: true` на `/health`
 - [ ] ЮKassa ключи + webhook (когда готовы платить)
 
