@@ -2,10 +2,12 @@ package clients
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -139,8 +141,15 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 		if clip.Lyric == "" {
 			clip.Lyric = req.Lyric
 		}
+		if err := c.materializeAudio(clip); err != nil {
+			return nil, fmt.Errorf("materialize audio: %w", err)
+		}
 	}
-	logrus.WithField("clips", len(clips)).Info("AceMusic create ok")
+	kind := ""
+	if len(clips) > 0 {
+		kind = audioURLKind(clips[0].AudioURL)
+	}
+	logrus.WithFields(logrus.Fields{"clips": len(clips), "audio_kind": kind}).Info("AceMusic create ok")
 	return clips, nil
 }
 
@@ -183,61 +192,277 @@ func clampAceMusicDuration(sec int) int {
 	return sec
 }
 
-type aceMusicCompletion struct {
-	ID      string `json:"id"`
-	Choices []struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-			Audio   []struct {
-				Type     string `json:"type"`
-				AudioURL struct {
-					URL string `json:"url"`
-				} `json:"audio_url"`
-			} `json:"audio"`
-		} `json:"message"`
-		FinishReason string `json:"finish_reason"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-		Code    string `json:"code"`
-	} `json:"error"`
-}
-
 func parseAceMusicCompletion(raw []byte) (clips []*GenerateResponse, title, lyric string, err error) {
-	var parsed aceMusicCompletion
-	if err := json.Unmarshal(raw, &parsed); err != nil {
+	var envelope struct {
+		ID      string `json:"id"`
+		Choices []struct {
+			Message struct {
+				Content      string          `json:"content"`
+				Audio        json.RawMessage `json:"audio"`
+				FinishReason string          `json:"finish_reason"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, "", "", fmt.Errorf("decode completion: %w", err)
 	}
-	if parsed.Error != nil && parsed.Error.Message != "" {
+	if envelope.Error != nil && envelope.Error.Message != "" {
 		return nil, "", "", &ProviderError{
 			Code:    "provider_error",
-			Message: "AceMusic: " + truncate(parsed.Error.Message, 200),
+			Message: "AceMusic: " + truncate(envelope.Error.Message, 200),
 			Status:  502,
 		}
 	}
-	if len(parsed.Choices) == 0 {
+	if len(envelope.Choices) == 0 {
 		return nil, "", "", fmt.Errorf("acemusic: empty choices, body: %s", redactBody(raw, 200))
 	}
-	msg := parsed.Choices[0].Message
+	msg := envelope.Choices[0].Message
+	if msg.FinishReason == "error" || envelope.Choices[0].FinishReason == "error" {
+		return nil, "", "", fmt.Errorf("acemusic generation error: %s", truncate(msg.Content, 200))
+	}
 	title, lyric = parseAceMusicMeta(msg.Content)
-	for i, a := range msg.Audio {
-		u := strings.TrimSpace(a.AudioURL.URL)
-		if u == "" {
-			continue
-		}
+	urls := extractAceMusicAudioRefs(msg.Audio)
+	for i, u := range urls {
 		clips = append(clips, &GenerateResponse{
 			AudioURL: u,
-			AudioID:  fmt.Sprintf("%s-%d", parsed.ID, i),
-			TaskID:   parsed.ID,
+			AudioID:  fmt.Sprintf("%s-%d", envelope.ID, i),
+			TaskID:   envelope.ID,
 			Title:    title,
 			Lyric:    lyric,
 		})
 	}
 	if len(clips) == 0 {
-		return nil, title, lyric, fmt.Errorf("acemusic: no audio in response")
+		return nil, title, lyric, fmt.Errorf("acemusic: no audio in response (content=%s)", truncate(msg.Content, 120))
 	}
 	return clips, title, lyric, nil
+}
+
+// extractAceMusicAudioRefs accepts several AceMusic/OpenRouter shapes.
+func extractAceMusicAudioRefs(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		out = append(out, s)
+	}
+	// Array of objects / strings
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		for _, item := range arr {
+			var s string
+			if json.Unmarshal(item, &s) == nil {
+				add(s)
+				continue
+			}
+			var obj map[string]interface{}
+			if json.Unmarshal(item, &obj) != nil {
+				continue
+			}
+			add(stringFromAny(obj["url"]))
+			add(stringFromAny(obj["data"]))
+			add(stringFromAny(obj["file"]))
+			if au, ok := obj["audio_url"]; ok {
+				switch v := au.(type) {
+				case string:
+					add(v)
+				case map[string]interface{}:
+					add(stringFromAny(v["url"]))
+				}
+			}
+		}
+		return out
+	}
+	// Single object
+	var obj map[string]interface{}
+	if json.Unmarshal(raw, &obj) == nil {
+		add(stringFromAny(obj["url"]))
+		add(stringFromAny(obj["data"]))
+		if au, ok := obj["audio_url"].(map[string]interface{}); ok {
+			add(stringFromAny(au["url"]))
+		}
+	}
+	return out
+}
+
+func stringFromAny(v interface{}) string {
+	s, _ := v.(string)
+	return strings.TrimSpace(s)
+}
+
+func audioURLKind(u string) string {
+	switch {
+	case strings.HasPrefix(u, "data:"):
+		return "data"
+	case strings.HasPrefix(u, "https://"), strings.HasPrefix(u, "http://"):
+		return "http"
+	case strings.HasPrefix(u, "/"):
+		return "path"
+	case looksLikeBase64Audio(u):
+		return "raw_b64"
+	default:
+		return "other"
+	}
+}
+
+func looksLikeBase64Audio(s string) bool {
+	if len(s) < 64 || strings.Contains(s, "://") || strings.Contains(s, " ") {
+		return false
+	}
+	for _, r := range s[:64] {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') ||
+			r == '+' || r == '/' || r == '=' || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// materializeAudio turns relative/API/raw-base64 refs into data: URLs SafeDownload can write.
+func (c *AceMusicClient) materializeAudio(clip *GenerateResponse) error {
+	if clip == nil {
+		return fmt.Errorf("nil clip")
+	}
+	u := strings.TrimSpace(clip.AudioURL)
+	if u == "" {
+		return fmt.Errorf("empty audio url")
+	}
+	if strings.HasPrefix(u, "data:") {
+		// Normalize / validate early so GenerationService gets a clean data URL.
+		b, mime, err := decodeDataURL(u)
+		if err != nil {
+			return err
+		}
+		if len(b) < 64 {
+			return fmt.Errorf("audio payload too small (%d bytes)", len(b))
+		}
+		clip.AudioURL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
+		return nil
+	}
+	if looksLikeBase64Audio(u) {
+		b, err := decodeBase64Loose(u)
+		if err != nil {
+			return err
+		}
+		if len(b) < 64 {
+			return fmt.Errorf("audio payload too small (%d bytes)", len(b))
+		}
+		clip.AudioURL = "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString(b)
+		return nil
+	}
+
+	full := u
+	if strings.HasPrefix(u, "/") {
+		full = c.baseURL + u
+	}
+	parsed, err := url.Parse(full)
+	if err != nil {
+		return fmt.Errorf("bad audio url: %w", err)
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return fmt.Errorf("unsupported audio url scheme")
+	}
+
+	req, err := http.NewRequest("GET", full, nil)
+	if err != nil {
+		return err
+	}
+	// AceMusic /v1/audio and CDN mirrors often require the API key.
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Accept", "*/*")
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch audio: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 40<<20))
+	if err != nil {
+		return fmt.Errorf("read audio: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("fetch audio HTTP %d: %s", resp.StatusCode, truncate(string(body), 160))
+	}
+	if len(body) < 64 {
+		return fmt.Errorf("fetched audio too small (%d bytes)", len(body))
+	}
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" || strings.Contains(mime, "text/") || strings.Contains(mime, "json") {
+		mime = "audio/mpeg"
+	}
+	mime = strings.Split(mime, ";")[0]
+	clip.AudioURL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(body)
+	return nil
+}
+
+func decodeDataURL(raw string) (data []byte, mime string, err error) {
+	comma := strings.Index(raw, ",")
+	if comma < 0 {
+		return nil, "", fmt.Errorf("bad data url")
+	}
+	meta := raw[:comma]
+	payload := raw[comma+1:]
+	mime = "audio/mpeg"
+	if strings.HasPrefix(meta, "data:") {
+		rest := strings.TrimPrefix(meta, "data:")
+		rest = strings.Split(rest, ";")[0]
+		if rest != "" {
+			mime = rest
+		}
+	}
+	if !strings.Contains(meta, ";base64") {
+		return nil, "", fmt.Errorf("data url must be base64")
+	}
+	b, err := decodeBase64Loose(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return b, mime, nil
+}
+
+func decodeBase64Loose(s string) ([]byte, error) {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t', ' ':
+			return -1
+		default:
+			return r
+		}
+	}, s)
+	encodings := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+	var last error
+	for _, enc := range encodings {
+		b, err := enc.DecodeString(s)
+		if err == nil {
+			return b, nil
+		}
+		last = err
+	}
+	// pad to multiple of 4
+	if m := len(s) % 4; m != 0 {
+		s2 := s + strings.Repeat("=", 4-m)
+		if b, err := base64.StdEncoding.DecodeString(s2); err == nil {
+			return b, nil
+		}
+	}
+	if last == nil {
+		last = fmt.Errorf("invalid base64")
+	}
+	return nil, last
 }
 
 func parseAceMusicMeta(content string) (title, lyric string) {

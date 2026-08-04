@@ -188,16 +188,32 @@ func saveDataURL(rawURL, destPath string, maxBytes int64) error {
 	if !strings.Contains(meta, ";base64") {
 		return fmt.Errorf("data url must be base64")
 	}
+	payload = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t', ' ':
+			return -1
+		default:
+			return r
+		}
+	}, payload)
 	decoded, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
-		// some providers use raw/URL-safe
 		decoded, err = base64.RawStdEncoding.DecodeString(payload)
-		if err != nil {
-			return fmt.Errorf("decode data url: %w", err)
-		}
+	}
+	if err != nil {
+		decoded, err = base64.URLEncoding.DecodeString(payload)
+	}
+	if err != nil {
+		decoded, err = base64.RawURLEncoding.DecodeString(payload)
+	}
+	if err != nil {
+		return fmt.Errorf("decode data url: %w", err)
 	}
 	if int64(len(decoded)) > maxBytes {
 		return fmt.Errorf("data url too large")
+	}
+	if len(decoded) == 0 {
+		return fmt.Errorf("empty data url payload")
 	}
 	return os.WriteFile(destPath, decoded, 0644)
 }

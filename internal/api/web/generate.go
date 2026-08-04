@@ -150,6 +150,7 @@ func (d *Deps) Generate(c *gin.Context) {
 			logrus.WithError(err).WithFields(logrus.Fields{
 				"job_id":  jobID,
 				"user_id": userID,
+				"err_msg": err.Error(),
 			}).Warn("generate job failed")
 			d.Jobs.Update(jobID, func(j *models.JobRecord) {
 				j.Status = string(services.JobFailed)

@@ -1,6 +1,8 @@
 package clients
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,16 +13,8 @@ import (
 )
 
 func TestParseAceMusicCompletion(t *testing.T) {
-	raw := []byte(`{
-	  "id":"chatcmpl-1",
-	  "choices":[{
-	    "message":{
-	      "role":"assistant",
-	      "content":"## Metadata\n**Caption:** Night Drive\n\n## Lyrics\n[Verse] go\n",
-	      "audio":[{"type":"audio_url","audio_url":{"url":"data:audio/mpeg;base64,AAA"}}]
-	    }
-	  }]
-	}`)
+	b64 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("A"), 128))
+	raw := []byte(`{"id":"chatcmpl-1","choices":[{"message":{"role":"assistant","content":"## Metadata\n**Caption:** Night Drive\n\n## Lyrics\n[Verse] go\n","audio":[{"type":"audio_url","audio_url":{"url":"data:audio/mpeg;base64,` + b64 + `"}}]}}]}`)
 	clips, title, lyric, err := parseAceMusicCompletion(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +31,8 @@ func TestParseAceMusicCompletion(t *testing.T) {
 }
 
 func TestAceMusicGenerateAll(t *testing.T) {
+	payload := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("A"), 128))
+	dataURL := "data:audio/mpeg;base64," + payload
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
 			http.NotFound(w, r)
@@ -52,7 +48,7 @@ func TestAceMusicGenerateAll(t *testing.T) {
 				{"message": map[string]interface{}{
 					"content": "ok",
 					"audio": []map[string]interface{}{
-						{"audio_url": map[string]string{"url": "data:audio/mpeg;base64,QQ=="}},
+						{"audio_url": map[string]string{"url": dataURL}},
 					},
 				}},
 			},
@@ -91,5 +87,48 @@ func TestBuildAceMusicContent(t *testing.T) {
 	inst := buildAceMusicContent(&GenerateRequest{Prompt: "edm", Instrumental: true})
 	if !strings.Contains(inst, "[inst]") {
 		t.Fatalf("%q", inst)
+	}
+}
+
+func TestExtractAceMusicAudioRefsVariants(t *testing.T) {
+	cases := []string{
+		`[{"audio_url":{"url":"data:audio/mpeg;base64,QQ=="}}]`,
+		`[{"url":"data:audio/mpeg;base64,QQ=="}]`,
+		`[{"data":"QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ==QQ=="}]`,
+		`[{"file":"/v1/audio?path=x.mp3"}]`,
+	}
+	for _, raw := range cases {
+		got := extractAceMusicAudioRefs(json.RawMessage(raw))
+		if len(got) != 1 {
+			t.Fatalf("%s -> %v", raw, got)
+		}
+	}
+}
+
+func TestMaterializeRelativeAudio(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") == "" {
+			http.Error(w, "auth", 401)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write(bytes.Repeat([]byte("A"), 128))
+	}))
+	defer srv.Close()
+	c := NewAceMusicClient(&config.Config{
+		AceMusicAPIKey:  "k",
+		AceMusicBaseURL: srv.URL,
+		AceMusicTimeout: 10,
+	})
+	clip := &GenerateResponse{AudioURL: "/v1/audio?path=x"}
+	if err := c.materializeAudio(clip); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(clip.AudioURL, "data:audio/mpeg;base64,") {
+		t.Fatalf("%s", clip.AudioURL[:40])
 	}
 }
