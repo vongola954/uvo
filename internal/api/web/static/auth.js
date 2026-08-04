@@ -18,6 +18,10 @@
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  function safeDecode(s) {
+    try { return decodeURIComponent(s); } catch (_) { return s; }
+  }
+
   /** initData from Bridge or #WebAppData=… fragment (MAX docs). */
   function readInitData() {
     try {
@@ -28,8 +32,16 @@
       const hash = (location.hash || '').replace(/^#/, '');
       if (!hash) return '';
       const params = new URLSearchParams(hash);
-      const raw = params.get('WebAppData') || params.get('webAppData') || '';
-      return raw ? decodeURIComponent(raw) : '';
+      // URLSearchParams already decodes once; optional second decode for double-encoded values.
+      let raw = params.get('WebAppData') || params.get('webAppData') || '';
+      if (!raw && hash.indexOf('WebAppData=') >= 0) {
+        const m = hash.match(/(?:^|&)WebAppData=([^&]*)/i);
+        if (m) raw = safeDecode(m[1]);
+      }
+      if (!raw) return '';
+      // Prefer string that already contains hash= (ready for server).
+      if (raw.indexOf('hash=') >= 0) return raw;
+      return safeDecode(raw);
     } catch (_) {
       return '';
     }

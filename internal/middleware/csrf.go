@@ -46,7 +46,8 @@ func CSRF() gin.HandlerFunc {
 		tok, err := c.Cookie(csrfCookie)
 		if err != nil || tok == "" {
 			tok = newToken()
-			c.SetSameSite(http.SameSiteStrictMode)
+			// Lax: MAX WebView / mini-app navigations must still receive CSRF cookie
+			c.SetSameSite(http.SameSiteLaxMode)
 			// HttpOnly=false: JS must read cookie for X-CSRF-Token header
 			c.SetCookie(csrfCookie, tok, 86400, "/", "", csrfSecure(), false)
 		}

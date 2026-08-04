@@ -21,7 +21,7 @@ func ValidateMaxWebAppInitData(initData, botToken string, maxAge time.Duration) 
 	if initData == "" || botToken == "" {
 		return "", fmt.Errorf("empty initData or token")
 	}
-	// Sometimes clients pass the full hash fragment including WebAppData=
+	// Full fragment: #WebAppData=...&WebAppPlatform=...
 	if strings.Contains(initData, "WebAppData=") || strings.Contains(initData, "webAppData=") {
 		vals, err := url.ParseQuery(strings.TrimPrefix(initData, "#"))
 		if err == nil {
@@ -33,11 +33,43 @@ func ValidateMaxWebAppInitData(initData, botToken string, maxAge time.Duration) 
 		}
 	}
 
-	pairs, hash, err := parseInitPairs(initData)
-	if err != nil {
-		return "", err
+	candidates := []string{initData}
+	if d1, e := url.QueryUnescape(initData); e == nil && d1 != initData {
+		candidates = append(candidates, d1)
+		if d2, e2 := url.QueryUnescape(d1); e2 == nil && d2 != d1 {
+			candidates = append(candidates, d2)
+		}
 	}
 
+	var last error
+	for _, cand := range candidates {
+		uid, err := validateMaxInitOnce(cand, botToken, maxAge)
+		if err == nil {
+			return uid, nil
+		}
+		last = err
+	}
+	if last == nil {
+		last = fmt.Errorf("invalid initData")
+	}
+	return "", last
+}
+
+func validateMaxInitOnce(initData, botToken string, maxAge time.Duration) (string, error) {
+	// Try: decoded values (docs) and raw values (some WebViews).
+	for _, decodeVals := range []bool{true, false} {
+		pairs, hash, err := parseInitPairs(initData, decodeVals)
+		if err != nil {
+			continue
+		}
+		if checkMaxHash(pairs, hash, botToken) {
+			return userIDFromPairs(pairs, maxAge)
+		}
+	}
+	return "", fmt.Errorf("invalid hash")
+}
+
+func checkMaxHash(pairs map[string]string, hash, botToken string) bool {
 	keys := make([]string, 0, len(pairs))
 	for k := range pairs {
 		keys = append(keys, k)
@@ -54,17 +86,28 @@ func ValidateMaxWebAppInitData(initData, botToken string, maxAge time.Duration) 
 	}
 	launchParams := b.String()
 
+	// Docs: secret = HMAC_SHA256(key="WebAppData", msg=BOT_TOKEN)
 	mac := hmac.New(sha256.New, []byte("WebAppData"))
 	_, _ = mac.Write([]byte(botToken))
 	secret := mac.Sum(nil)
-
 	mac2 := hmac.New(sha256.New, secret)
 	_, _ = mac2.Write([]byte(launchParams))
 	want := hex.EncodeToString(mac2.Sum(nil))
-	if !hmac.Equal([]byte(strings.ToLower(want)), []byte(strings.ToLower(hash))) {
-		return "", fmt.Errorf("invalid hash")
+	if hmac.Equal([]byte(strings.ToLower(want)), []byte(strings.ToLower(hash))) {
+		return true
 	}
 
+	// Alternate key order seen in some samples: HMAC(key=token, msg="WebAppData")
+	mac = hmac.New(sha256.New, []byte(botToken))
+	_, _ = mac.Write([]byte("WebAppData"))
+	secret = mac.Sum(nil)
+	mac2 = hmac.New(sha256.New, secret)
+	_, _ = mac2.Write([]byte(launchParams))
+	want = hex.EncodeToString(mac2.Sum(nil))
+	return hmac.Equal([]byte(strings.ToLower(want)), []byte(strings.ToLower(hash)))
+}
+
+func userIDFromPairs(pairs map[string]string, maxAge time.Duration) (string, error) {
 	if maxAge > 0 {
 		ad := pairs["auth_date"]
 		sec, err := strconv.ParseInt(ad, 10, 64)
@@ -75,7 +118,6 @@ func ValidateMaxWebAppInitData(initData, botToken string, maxAge time.Duration) 
 			return "", fmt.Errorf("initData expired")
 		}
 	}
-
 	userJSON := pairs["user"]
 	if userJSON == "" {
 		return "", fmt.Errorf("missing user")
@@ -97,9 +139,7 @@ func ValidateMaxWebAppInitData(initData, botToken string, maxAge time.Duration) 
 	return strconv.FormatInt(id, 10), nil
 }
 
-// parseInitPairs splits key=value&… like MAX docs (manual decode), not url.ParseQuery
-// which can alter '+' and nested encodings.
-func parseInitPairs(initData string) (map[string]string, string, error) {
+func parseInitPairs(initData string, decodeVals bool) (map[string]string, string, error) {
 	parts := strings.Split(initData, "&")
 	out := make(map[string]string, len(parts))
 	hash := ""
@@ -115,9 +155,11 @@ func parseInitPairs(initData string) (map[string]string, string, error) {
 		if k == "" {
 			continue
 		}
-		dv, err := url.QueryUnescape(v)
-		if err != nil {
-			dv = v
+		dv := v
+		if decodeVals {
+			if d, err := url.QueryUnescape(v); err == nil {
+				dv = d
+			}
 		}
 		if k == "hash" {
 			hashCount++
@@ -126,22 +168,21 @@ func parseInitPairs(initData string) (map[string]string, string, error) {
 		}
 		out[k] = dv
 	}
-	if hashCount != 1 || hash == "" {
-		// fallback: url.ParseQuery (encoded initData from Encode())
-		vals, err := url.ParseQuery(initData)
-		if err != nil {
-			return nil, "", fmt.Errorf("missing hash")
-		}
-		hash = vals.Get("hash")
-		if hash == "" {
-			return nil, "", fmt.Errorf("missing hash")
-		}
-		vals.Del("hash")
-		out = make(map[string]string, len(vals))
-		for k := range vals {
-			out[k] = vals.Get(k)
-		}
+	if hashCount == 1 && hash != "" {
 		return out, hash, nil
+	}
+	vals, err := url.ParseQuery(initData)
+	if err != nil {
+		return nil, "", fmt.Errorf("missing hash")
+	}
+	hash = vals.Get("hash")
+	if hash == "" {
+		return nil, "", fmt.Errorf("missing hash")
+	}
+	vals.Del("hash")
+	out = make(map[string]string, len(vals))
+	for k := range vals {
+		out[k] = vals.Get(k)
 	}
 	return out, hash, nil
 }
