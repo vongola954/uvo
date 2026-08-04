@@ -14,12 +14,49 @@
     } catch (_) {}
   }
 
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** initData from Bridge or #WebAppData=… fragment (MAX docs). */
+  function readInitData() {
+    try {
+      const wa = global.WebApp;
+      if (wa && wa.initData) return String(wa.initData);
+    } catch (_) {}
+    try {
+      const hash = (location.hash || '').replace(/^#/, '');
+      if (!hash) return '';
+      const params = new URLSearchParams(hash);
+      const raw = params.get('WebAppData') || params.get('webAppData') || '';
+      return raw ? decodeURIComponent(raw) : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   function inMaxWebApp() {
     try {
-      return !!(global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe));
+      if (global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe)) return true;
+      const h = location.hash || '';
+      return h.indexOf('WebAppData=') >= 0 || h.indexOf('webAppData=') >= 0;
     } catch (_) {
       return false;
     }
+  }
+
+  async function waitInitData(tries) {
+    for (let i = 0; i < (tries || 15); i++) {
+      try {
+        const wa = global.WebApp;
+        if (wa && typeof wa.ready === 'function') wa.ready();
+        if (wa && typeof wa.expand === 'function') wa.expand();
+      } catch (_) {}
+      const d = readInitData();
+      if (d) return d;
+      await sleep(150);
+    }
+    return readInitData();
   }
 
   /** Login via MAX Bridge initData when opened as mini-app inside MAX. */
@@ -28,29 +65,48 @@
     maxAuthPromise = (async () => {
       try {
         if (!inMaxWebApp()) return false;
-        const wa = global.WebApp;
-        try { if (typeof wa.ready === 'function') wa.ready(); } catch (_) {}
-        try { if (typeof wa.expand === 'function') wa.expand(); } catch (_) {}
-        const initData = wa.initData || '';
-        if (!initData) return false;
+        // Already have session?
+        try {
+          const me = await fetch('/api/auth/me', { credentials: 'include', headers: authHeaders() });
+          if (me.ok) {
+            const data = await me.json();
+            if (data.authenticated) return true;
+          }
+        } catch (_) {}
+
+        const initData = await waitInitData(20);
+        if (!initData) {
+          console.warn('UVO: MAX initData empty');
+          return false;
+        }
+        const headers = { 'Content-Type': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRF-Token'] = csrf;
         const res = await fetch('/api/auth/max-webapp', {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ init_data: initData }),
         });
-        if (!res.ok) return false;
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          console.warn('UVO: max-webapp auth failed', res.status, errBody.slice(0, 200));
+          maxAuthPromise = null; // allow retry
+          return false;
+        }
         const data = await res.json().catch(() => ({}));
         if (data.token) setToken(data.token);
         return true;
-      } catch (_) {
+      } catch (e) {
+        console.warn('UVO: max-webapp auth error', e);
+        maxAuthPromise = null;
         return false;
       }
     })();
     return maxAuthPromise;
   }
 
-  // One-time ?code= from MAX /login → HttpOnly cookie session
+  // Boot: MAX initData / ?code= / legacy ?token=
   (async function captureLoginCode() {
     try {
       await ensureMaxWebAppAuth();
@@ -59,10 +115,13 @@
       if (code) {
         u.searchParams.delete('code');
         history.replaceState({}, '', u.pathname + u.search + u.hash);
+        const headers = { 'Content-Type': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRF-Token'] = csrf;
         await fetch('/api/auth/exchange', {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ code: code }),
         });
         setToken('');
@@ -93,15 +152,23 @@
 
   async function api(path, opts) {
     opts = opts || {};
-    await ensureMaxWebAppAuth();
+    const ok = await ensureMaxWebAppAuth();
     const headers = authHeaders(opts.headers);
     if (opts.body instanceof FormData) {
       delete headers['Content-Type'];
     }
     const res = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers }));
     if (res.status === 401) {
+      maxAuthPromise = null;
+      await ensureMaxWebAppAuth();
+      const headers2 = authHeaders(opts.headers);
+      if (opts.body instanceof FormData) delete headers2['Content-Type'];
+      const res2 = await fetch(path, Object.assign({ credentials: 'include' }, opts, { headers: headers2 }));
+      if (res2.status !== 401) return res2;
       const err = new Error(inMaxWebApp()
-        ? 'Откройте студию кнопкой «Запуск» в боте MAX'
+        ? (ok
+          ? 'Сессия MAX не принята — закройте и снова нажмите «Запуск»'
+          : 'Нет initData MAX — откройте студию кнопкой «Запуск» в боте')
         : 'Нужна авторизация: в MAX-боте /login или «Запуск»');
       err.status = 401;
       throw err;
@@ -120,7 +187,7 @@
     const res = await fetch('/api/auth/token', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ user_id: 'demo_user' }),
     });
     if (!res.ok) return '';
@@ -188,6 +255,6 @@
 
   global.UVO = {
     getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK,
-    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp,
+    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp, readInitData,
   };
 })(window);

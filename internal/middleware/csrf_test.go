@@ -46,3 +46,17 @@ func TestCSRFGenerateRequiresHeader(t *testing.T) {
 		t.Fatalf("with header want 200, got %d", w2.Code)
 	}
 }
+
+func TestCSRFMaxWebAppExempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(CSRF())
+	r.POST("/api/auth/max-webapp", func(c *gin.Context) { c.Status(200) })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/max-webapp", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("max-webapp should skip CSRF, got %d", w.Code)
+	}
+}

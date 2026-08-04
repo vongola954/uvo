@@ -27,7 +27,7 @@ func needsCSRF(method, path string) bool {
 	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
 		return false
 	}
-	if path == "/api/auth/exchange" || path == "/api/auth/logout" {
+	if path == "/api/auth/exchange" || path == "/api/auth/logout" || path == "/api/auth/max-webapp" {
 		return false
 	}
 	if !strings.HasPrefix(path, "/api/") {

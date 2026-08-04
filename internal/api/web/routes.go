@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	"uvo/internal/api/bot"
@@ -50,7 +51,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.7.7"
+		d.Version = "2.7.8"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -219,8 +220,9 @@ func (d *Deps) authMaxWebApp(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", "init_data обязателен")
 		return
 	}
-	uid, err := services.ValidateMaxWebAppInitData(req.InitData, token, time.Hour)
+	uid, err := services.ValidateMaxWebAppInitData(req.InitData, token, 24*time.Hour)
 	if err != nil {
+		logrus.WithError(err).Warn("max-webapp initData rejected")
 		middleware.AbortJSON(c, 401, "invalid_init_data", "не удалось проверить MAX WebApp данные")
 		return
 	}
