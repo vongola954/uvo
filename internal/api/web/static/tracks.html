@@ -44,6 +44,16 @@
   <a href="/?view=balance"><span>◇</span>Баланс</a>
 </nav>
 <script>
+(function () {
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || !location.hash) return;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) !== '/' || href.indexOf('#') >= 0) return;
+    e.preventDefault();
+    location.assign(href + location.hash);
+  }, false);
+})();
 UVO.mountAuthBar(document.getElementById('auth'));
 let portraitTrackId = null;
 async function setPublic(id, isPublic) {

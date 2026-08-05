@@ -1,6 +1,6 @@
 /** UVO app shell — Sonata-like IA (bottom nav + views), UVO visual language */
 (function (global) {
-  const VIEWS = ['hub', 'lyrics', 'create', 'balance'];
+  const VIEWS = ['hub', 'lyrics', 'create', 'tracks', 'balance'];
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -10,13 +10,12 @@
     return Array.from((root || document).querySelectorAll(sel));
   }
 
-  /** Same-origin nav that keeps MAX #WebAppData=… hash (auth depends on it). */
-  function go(path) {
+  /** Same-origin jump; keep #WebAppData so MAX session survives page changes. */
+  function goLocal(path) {
     try {
       const u = new URL(path, location.origin);
       if (!u.hash && location.hash) u.hash = location.hash;
       const next = u.pathname + u.search + u.hash;
-      if (next === location.pathname + location.search + location.hash) return;
       location.assign(next);
     } catch (_) {
       location.href = path;
@@ -29,6 +28,7 @@
     qsa('[data-uvo-view]').forEach((el) => {
       const on = el.getAttribute('data-uvo-view') === view;
       el.classList.toggle('hidden', !on);
+      el.toggleAttribute('hidden', !on);
       el.setAttribute('aria-hidden', on ? 'false' : 'true');
     });
     qsa('[data-uvo-nav]').forEach((el) => {
@@ -51,10 +51,15 @@
     } catch (_) {}
     if (view === 'create' && opts && opts.tab) {
       const tab = document.querySelector('.studio-tab[data-tab="' + opts.tab + '"]');
-      if (tab) tab.click();
+      if (tab) {
+        try { tab.click(); } catch (_) {}
+      }
     }
     if (view === 'create' && opts && opts.mode && typeof global.setGenMode === 'function') {
-      global.setGenMode(opts.mode);
+      try { global.setGenMode(opts.mode); } catch (_) {}
+    }
+    if (view === 'tracks' && typeof global.loadTracksView === 'function') {
+      try { global.loadTracksView(); } catch (_) {}
     }
   }
 
@@ -62,28 +67,16 @@
     const parts = String(raw || 'hub').split(':');
     const view = parts[0];
     const extra = parts[1] || '';
-    if (view === 'tracks') {
-      go('/tracks.html');
-      return;
-    }
+    if (view === 'tracks') { setView('tracks'); return; }
     if (view === 'media') {
-      go('/media.html' + (extra ? ('?tab=' + encodeURIComponent(extra)) : ''));
+      goLocal('/media.html' + (extra ? ('?tab=' + encodeURIComponent(extra)) : ''));
       return;
     }
-    if (view === 'distribution') {
-      go('/distribution.html');
-      return;
-    }
-    if (view === 'playlists') {
-      go('/playlists.html');
-      return;
-    }
-    if (view === 'feed') {
-      go('/feed.html');
-      return;
-    }
+    if (view === 'distribution') { goLocal('/distribution.html'); return; }
+    if (view === 'playlists') { goLocal('/playlists.html'); return; }
+    if (view === 'feed') { goLocal('/feed.html'); return; }
     if (view === 'karaoke') {
-      go('/karaoke.html' + (extra ? ('?id=' + encodeURIComponent(extra)) : ''));
+      goLocal('/karaoke.html' + (extra ? ('?id=' + encodeURIComponent(extra)) : ''));
       return;
     }
     const opts = {};
@@ -93,36 +86,34 @@
   }
 
   function bindNav() {
-    qsa('[data-uvo-nav]').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        const view = el.getAttribute('data-uvo-nav');
-        if (!view) return;
+    if (document.documentElement.getAttribute('data-uvo-nav-bound') === '1') return;
+    document.documentElement.setAttribute('data-uvo-nav-bound', '1');
+    document.addEventListener('click', (e) => {
+      const openEl = e.target && e.target.closest ? e.target.closest('[data-uvo-open]') : null;
+      if (openEl) {
         e.preventDefault();
         e.stopPropagation();
-        if (view === 'tracks') {
-          go('/tracks.html');
-          return;
-        }
-        openTarget(view);
-      });
-    });
-    qsa('[data-uvo-open]').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openTarget(el.getAttribute('data-uvo-open') || 'hub');
-      });
-    });
+        openTarget(openEl.getAttribute('data-uvo-open') || 'hub');
+        return;
+      }
+      const navEl = e.target && e.target.closest ? e.target.closest('[data-uvo-nav]') : null;
+      if (!navEl) return;
+      const view = navEl.getAttribute('data-uvo-nav');
+      if (!view) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openTarget(view);
+    }, false);
   }
 
   function detectMiniApp() {
     const inMax = !!(global.UVO && global.UVO.inMaxWebApp && global.UVO.inMaxWebApp());
-    const q = location.search.indexOf('app=1') >= 0;
+    const q = location.search || '';
     let bridge = false;
     try {
       bridge = !!(global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe));
     } catch (_) {}
-    return inMax || q || bridge;
+    return inMax || bridge || q.indexOf('app=1') >= 0 || q.indexOf('tgWebApp') >= 0;
   }
 
   function applyMiniAppLayout() {
@@ -215,23 +206,20 @@
     bindNav();
     mountStyleChips(qs('#style-chips'));
     initFromQuery();
-    // Bridge may appear a bit later inside MAX — re-detect and open hub if still unset
     let n = 0;
     const t = setInterval(() => {
       n += 1;
-      const was = document.body.classList.contains('uvo-miniapp');
+      const before = document.body.classList.contains('uvo-miniapp');
       applyMiniAppLayout();
-      const now = document.body.classList.contains('uvo-miniapp');
-      if (now && !document.body.getAttribute('data-uvo-view')) {
-        initFromQuery();
-      } else if (now && !was && !new URL(location.href).searchParams.get('view')) {
+      const after = document.body.classList.contains('uvo-miniapp');
+      if (after && !before && !new URL(location.href).searchParams.get('view')) {
         setView('hub', { scroll: false, smooth: false });
       }
-      if (n >= 20) clearInterval(t);
+      if (n >= 20 || after) clearInterval(t);
     }, 200);
   }
 
-  global.UVOApp = { setView, init, mountStyleChips, syncStyleField, STYLE_GROUPS, go, openTarget };
+  global.UVOApp = { setView, init, mountStyleChips, syncStyleField, STYLE_GROUPS, goLocal };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })(window);

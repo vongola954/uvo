@@ -166,6 +166,7 @@
     body[data-uvo-view="hub"] [data-uvo-view="hub"],
     body[data-uvo-view="lyrics"] [data-uvo-view="lyrics"],
     body[data-uvo-view="create"] [data-uvo-view="create"],
+    body[data-uvo-view="tracks"] [data-uvo-view="tracks"],
     body[data-uvo-view="balance"] [data-uvo-view="balance"] {
       display: block !important;
     }
@@ -587,6 +588,19 @@
       </div>
     </section>
 
+    <section data-uvo-view="tracks" class="px-5 pt-20 pb-8 hidden" hidden>
+      <div class="max-w-2xl mx-auto">
+        <div class="flex items-end justify-between mb-4">
+          <div>
+            <h2 class="text-2xl font-bold">Мои треки</h2>
+            <p class="text-xs text-zinc-500 mt-1">Скачать · минус · портрет · дистрибуция</p>
+          </div>
+          <button type="button" id="btn-tracks-refresh" class="btn-ghost text-xs px-3 py-2 rounded-xl">Обновить</button>
+        </div>
+        <div id="tracks-view-list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
+      </div>
+    </section>
+
     <section id="pricing" data-uvo-view="balance" class="px-5 pt-20 pb-8">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold text-center mb-3">Баланс</h2>
@@ -606,18 +620,74 @@
     <nav class="bottom-nav" aria-label="Основная навигация">
       <button type="button" data-uvo-nav="lyrics"><span class="nav-ico">✎</span>Стихи</button>
       <button type="button" data-uvo-nav="create"><span class="nav-ico">♪</span>Создать</button>
-      <a href="/tracks.html" data-uvo-nav="tracks"><span class="nav-ico">☰</span>Треки</a>
+      <button type="button" data-uvo-nav="tracks"><span class="nav-ico">☰</span>Треки</button>
       <button type="button" data-uvo-nav="balance"><span class="nav-ico">◇</span>Баланс</button>
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.10.8"></script>
-  <script src="/static/app-shell.js?v=2.10.8"></script>
+  <script src="/static/auth.js?v=2.10.9"></script>
+  <script src="/static/app-shell.js?v=2.10.9"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
     let genMode = 'idea';
     let wizStep = 1;
+
+    window.loadTracksView = async function loadTracksView() {
+      const el = document.getElementById('tracks-view-list');
+      if (!el) return;
+      el.textContent = 'Загрузка…';
+      try {
+        await UVO.ensureDevToken();
+        const res = await UVO.api('/api/tracks');
+        const d = await res.json();
+        if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+        const list = d.tracks || [];
+        el.textContent = '';
+        if (!list.length) {
+          const empty = document.createElement('div');
+          empty.className = 'glass p-6 text-center text-zinc-500';
+          empty.innerHTML = 'Пока пусто. <button type="button" class="text-emerald-400" data-uvo-open="create">Создать песню →</button>';
+          el.appendChild(empty);
+          return;
+        }
+        list.forEach((t) => {
+          const title = t.Title || t.title || 'Трек';
+          const dur = t.Duration || t.duration || '?';
+          const id = t.ID || t.id;
+          const card = UVO.el('div', { className: 'glass p-4 space-y-2' }, [
+            UVO.el('div', { className: 'font-medium text-white', text: title + ' · ' + dur + 's' }),
+            UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + id + '/play' }),
+          ]);
+          const actions = UVO.el('div', { className: 'flex flex-wrap gap-2' });
+          const mk = (text, fn) => {
+            const b = UVO.el('button', {
+              className: 'text-xs px-3 py-1.5 rounded-lg border border-white/10',
+              text,
+            });
+            b.onclick = fn;
+            actions.appendChild(b);
+          };
+          mk('Скачать mp3', () => {
+            UVO.downloadFile('/tracks/' + id + '/download', 'uvo-track-' + id + '.mp3')
+              .catch((e) => alert(e.message || 'Не удалось скачать'));
+          });
+          mk('Минусовка', () => {
+            if (window.UVOApp && UVOApp.goLocal) UVOApp.goLocal('/karaoke.html?id=' + id);
+            else location.href = '/karaoke.html?id=' + id + (location.hash || '');
+          });
+          mk('Полная страница', () => {
+            if (window.UVOApp && UVOApp.goLocal) UVOApp.goLocal('/tracks.html');
+            else location.href = '/tracks.html' + (location.hash || '');
+          });
+          card.appendChild(actions);
+          el.appendChild(card);
+        });
+      } catch (e) {
+        el.textContent = e.message || 'Ошибка загрузки';
+      }
+    };
+    document.getElementById('btn-tracks-refresh')?.addEventListener('click', () => window.loadTracksView());
 
     function syncStyleFromChips() {
       if (window.UVOApp && typeof UVOApp.syncStyleField === 'function') {
