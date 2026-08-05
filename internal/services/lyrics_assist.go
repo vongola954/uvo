@@ -227,10 +227,12 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 		return localLyricsDraft(idea, style), nil
 	}
 
-	system := "Ты автор песен. Напиши УНИКАЛЬНЫЙ текст песни на русском под конкретную идею пользователя (куплет/припев), без пояснений и без клише «город молчит», 14–24 строк. Не повторяй одни и те же шаблоны."
-	user := "Идея: " + idea
+	system := "Ты автор песен. Напиши УНИКАЛЬНЫЙ текст песни на русском (куплет/припев), 14–24 строк, без пояснений. " +
+		"Стиль/жанр (synth-pop, поп, вокал и т.п.) — только для настроения музыки; НЕ вставляй названия жанров, теги стиля и англ. production-слова (synth, pop, beat) в строки песни."
+	theme := lyricThemeText(idea, style)
+	user := "Идея/тема песни: " + theme
 	if style != "" {
-		user += "\nСтиль: " + style
+		user += "\nМузыкальный стиль (не цитировать в тексте): " + style
 	}
 	seed := lyricsSeed(idea, style)
 
@@ -468,29 +470,31 @@ func pickLine(seed uint64, n int, lines []string) string {
 }
 
 // localLyricsDraft builds a usable Russian song draft without any external LLM.
-// Each call uses a fresh seed so the same idea does not yield an identical sheet.
+// Style/genre tags never appear as lyric words — only mood coloring.
 func localLyricsDraft(idea, style string) string {
 	idea = strings.TrimSpace(idea)
 	style = strings.TrimSpace(style)
 	seed := lyricsSeed(idea, style)
-	hook := shortHook(idea)
+	mood := detectMood(idea, style)
+	theme := lyricThemeText(idea, style)
+	hook := shortHook(theme)
+	if isStyleNoise(hook) || hook == "" {
+		hook = pickLine(seed, 2, moodHooks[mood])
+	}
 	title := titleFirst(hook)
-	keys := ideaKeywords(idea, 4)
-	k1, k2, k3 := "эта ночь", "тишина", "дорога"
-	if len(keys) > 0 {
+	keys := ideaKeywords(theme, 4)
+	k1, k2, k3 := pickLine(seed, 3, moodKeys[mood]), pickLine(seed, 4, moodKeys[mood]), pickLine(seed, 5, moodKeys[mood])
+	if len(keys) > 0 && !isStyleNoise(keys[0]) {
 		k1 = keys[0]
 	}
-	if len(keys) > 1 {
+	if len(keys) > 1 && !isStyleNoise(keys[1]) {
 		k2 = keys[1]
 	}
-	if len(keys) > 2 {
+	if len(keys) > 2 && !isStyleNoise(keys[2]) {
 		k3 = keys[2]
 	}
-	mood := detectMood(idea, style)
+	// Never inject raw style labels ("synth-pop") into lyric lines.
 	moodPhrase := pickLine(seed, 1, moodPhrases[mood])
-	if style != "" && utf8.RuneCountInString(style) <= 40 {
-		moodPhrase = style
-	}
 
 	v1 := []string{
 		fmt.Sprintf("Начинается с %s — и воздух другой,", k1),
@@ -617,6 +621,37 @@ var moodPhrases = map[string][]string{
 	"default": {"по-своему", "чисто и резко", "в своём темпе", "без масок"},
 }
 
+var moodHooks = map[string][]string{
+	"love":    {"наши руки", "тихое «останься»", "этот взгляд", "два сердца"},
+	"sad":     {"пустой двор", "остывший чай", "чужой зонт", "последний звонок"},
+	"energy":  {"наш разгон", "громкий зал", "эта искра", "общий крик"},
+	"night":   {"ночные огни", "пустая улица", "второй час", "неон за окном"},
+	"road":    {"дальняя станция", "билеты вдвоём", "длинная трасса", "окно поезда"},
+	"default": {"эта история", "наш секрет", "живой сигнал", "просто мы"},
+}
+
+var moodKeys = map[string][]string{
+	"love":    {"тепло", "взгляд", "ладонь", "шёпот", "расстояние"},
+	"sad":     {"тишина", "дождь", "память", "окно", "эхо"},
+	"energy":  {"ритм", "свет", "толпа", "искра", "гром"},
+	"night":   {"неон", "улица", "тень", "рассвет", "город"},
+	"road":    {"дорога", "вокзал", "ветер", "карта", "горизонт"},
+	"default": {"ночь", "голос", "шаги", "небо", "слово"},
+}
+
+// productionStyleTags — genre/voice/mood library labels that must not leak into lyrics.
+var productionStyleTags = []string{
+	"хип-хоп", "хипхоп", "r&b", "rnb", "поп-музыка", "поп музыка", "поп", "pop", "шансон",
+	"джаз", "блюз", "blues", "jazz", "рок", "метал", "metal", "rock", "регги", "reggae",
+	"кантри", "country", "фолк", "folk", "электронная музыка", "электронн", "electronic",
+	"классика", "детские", "synth", "synth-pop", "synthpop", "синти", "инди", "indie",
+	"lo-fi", "lofi", "trap", "edm", "house", "techno", "ambient", "disco", "funk",
+	"мужской вокал", "женский вокал", "детский вокал", "дуэт", "вокал", "instrumental",
+	"инструментал", "энергичное", "счастливое", "грустное", "романтическое", "чилл",
+	"эпичное", "драматичное", "тёмное", "темное", "мечтательное", "вдохновляющее",
+	"beat", "beats", "bpm", "808", "bass", "guitar", "piano", "drums",
+}
+
 func detectMood(idea, style string) string {
 	s := strings.ToLower(idea + " " + style)
 	switch {
@@ -624,15 +659,120 @@ func detectMood(idea, style string) string {
 		return "love"
 	case containsAny(s, "груст", "слёз", "боль", "один", "проща", "тоск", "дожд"):
 		return "sad"
-	case containsAny(s, "танц", "вечерин", "энерг", "драйв", "клуб", "громк", "хип"):
+	case containsAny(s, "танц", "вечерин", "энерг", "драйв", "клуб", "громк"):
 		return "energy"
-	case containsAny(s, "ноч", "лун", "рассвет", "неон", "2:00", "темно"):
+	case containsAny(s, "ноч", "лун", "рассвет", "неон", "2:00", "темно", "synth"):
 		return "night"
 	case containsAny(s, "дорог", "поезд", "машин", "трасс", "путеше", "метро", "город"):
 		return "road"
 	default:
 		return "default"
 	}
+}
+
+// lyricThemeText keeps narrative idea words and strips style/genre production tags.
+func lyricThemeText(idea, style string) string {
+	idea = strings.TrimSpace(idea)
+	if idea == "" {
+		return ""
+	}
+	banned := styleTokenSet(style)
+	parts := strings.FieldsFunc(idea, func(r rune) bool {
+		return r == ',' || r == ';' || r == '/' || r == '|' || r == '\n'
+	})
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || isStyleNoise(p) || banned[normalizeStyleToken(p)] {
+			continue
+		}
+		// Drop comma-chunks that are only production tokens after split by space.
+		words := strings.Fields(p)
+		clean := make([]string, 0, len(words))
+		for _, w := range words {
+			w = strings.Trim(w, ".,!?\"'«»()[]")
+			if w == "" || isStyleNoise(w) || banned[normalizeStyleToken(w)] {
+				continue
+			}
+			clean = append(clean, w)
+		}
+		if len(clean) == 0 {
+			continue
+		}
+		kept = append(kept, strings.Join(clean, " "))
+	}
+	return strings.TrimSpace(strings.Join(kept, ", "))
+}
+
+func styleTokenSet(style string) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range strings.FieldsFunc(style, func(r rune) bool {
+		return r == ',' || r == ';' || r == '/' || r == '|' || r == '\n' || r == ' '
+	}) {
+		p = normalizeStyleToken(p)
+		if p != "" {
+			out[p] = true
+		}
+	}
+	return out
+}
+
+func normalizeStyleToken(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.Trim(s, ".,!?\"'«»()[]")
+	s = strings.ReplaceAll(s, "ё", "е")
+	return s
+}
+
+func isStyleNoise(s string) bool {
+	s = normalizeStyleToken(s)
+	if s == "" {
+		return true
+	}
+	// Exact / hyphenated genre forms only — never substring ("рок" ∉ "урок", "поп" ∉ "пополам").
+	for _, tag := range productionStyleTags {
+		tag = normalizeStyleToken(tag)
+		if tag == "" {
+			continue
+		}
+		if s == tag {
+			return true
+		}
+		if strings.Contains(s, "-") {
+			for _, part := range strings.Split(s, "-") {
+				if normalizeStyleToken(part) == tag {
+					return true
+				}
+			}
+		}
+		// Multi-word library labels: "женскии вокал", "электронная музыка"
+		if strings.Contains(tag, " ") && (s == tag || strings.HasPrefix(s, tag) || strings.Contains(s, tag)) {
+			return true
+		}
+		if strings.HasSuffix(tag, "н") && strings.HasPrefix(s, tag) && utf8.RuneCountInString(tag) >= 6 {
+			// "электронн" → электронная/электронный
+			return true
+		}
+	}
+	if isASCIILetterWord(s) && utf8.RuneCountInString(s) <= 12 {
+		switch s {
+		case "pop", "rock", "jazz", "funk", "soul", "punk", "rap", "edm", "rnb", "house", "techno", "metal", "folk", "indie", "synth", "vocal", "chorus", "verse", "bridge", "outro", "intro":
+			return true
+		}
+	}
+	return false
+}
+
+func isASCIILetterWord(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 func containsAny(s string, parts ...string) bool {
@@ -661,7 +801,7 @@ func ideaKeywords(idea string, n int) []string {
 	seen := map[string]bool{}
 	for _, w := range fields {
 		w = strings.TrimSpace(w)
-		if w == "" || stop[w] || utf8.RuneCountInString(w) < 3 {
+		if w == "" || stop[w] || utf8.RuneCountInString(w) < 3 || isStyleNoise(w) {
 			continue
 		}
 		if seen[w] {

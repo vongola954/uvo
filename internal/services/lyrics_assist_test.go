@@ -108,6 +108,19 @@ func TestLocalLyricsDraftVaries(t *testing.T) {
 	}
 }
 
+func TestLocalLyricsDraftStripsStyleTags(t *testing.T) {
+	text := localLyricsDraft("ночной synth-pop", "ночной synth-pop, Женский вокал")
+	low := strings.ToLower(text)
+	for _, bad := range []string{"synth", "synth-pop", "pop", "вокал"} {
+		if strings.Contains(low, bad) {
+			t.Fatalf("style tag %q leaked into lyrics:\n%s", bad, text)
+		}
+	}
+	if theme := lyricThemeText("город после дождя, женский вокал, synth-pop", "Женский вокал, synth-pop"); theme != "город после дождя" {
+		t.Fatalf("theme=%q", theme)
+	}
+}
+
 func TestLyricsAssistDraftFallsBackLocal(t *testing.T) {
 	t.Setenv("LYRICS_LLM_PROVIDER", "local")
 	t.Setenv("LYRICS_ASSIST", "true")
