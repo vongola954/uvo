@@ -45,7 +45,7 @@ func (b *Bot) sendHome(chatID, userID int64, extra string) {
 		"UVO — AI-студия музыки\n\n"+
 			"%d песни в подарок · 1 кредит = 1 песня\n"+
 			"Пакеты от 99₽ · кавер / караоке / свой голос\n\n"+
-			"Нажми «Запуск» — студия откроется в MAX.\n"+
+			"Открой студию кнопкой «Запуск» или «Открыть в MAX» ниже.\n"+
 			"/generate · /credits · /help",
 		services.FreeCredits,
 	)

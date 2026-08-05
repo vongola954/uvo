@@ -29,7 +29,8 @@ ENV WEB_HOST=0.0.0.0 \
     DEV_AUTH=false \
     DEMO_TOPUP=false \
     VOICE_CLONE_PROVIDER=acedata \
-    BOT_MODE=polling
+    BOT_MODE=polling \
+    MAX_BOT_USERNAME=id262812853458_bot
 USER uvo
 EXPOSE 8080
 CMD ["./uvo"]

@@ -18,6 +18,7 @@ type MAXClient struct {
 	token    string
 	baseURL  string
 	username string // bot username for open_app deep links (max.ru/<user>?startapp)
+	botID    int64  // contact_id for open_app
 	client   *http.Client
 }
 
@@ -78,24 +79,51 @@ func (m *MAXClient) SendStudioTo(userID, chatID int64, text, studioURL string) e
 		{"type": "message", "text": "/help"},
 	}
 
-	// 1) In-MAX window via open_app deep link.
-	if start := m.StartAppURL(); start != "" {
-		openApp := [][]map[string]interface{}{
-			{{"type": "open_app", "text": "Запуск", "web_app": start}},
+	start := m.StartAppURL()
+	// In-MAX mini-app: web_app must be max.ru/<bot>?startapp (direct studio HTTPS → API 404).
+	// Pair with link to the same URL — some clients open mini-app only via link.
+	if start != "" {
+		openBtn := map[string]interface{}{"type": "open_app", "text": "Запуск", "web_app": start}
+		if m.botID != 0 {
+			openBtn["contact_id"] = m.botID
+		}
+		buttons := [][]map[string]interface{}{
+			{openBtn},
+			{{"type": "link", "text": "Открыть в MAX", "url": start}},
 			quick,
 		}
-		if err := m.sendKeyboard(userID, chatID, text, openApp); err != nil {
-			logrus.WithError(err).Info("open_app failed — falling back to link Запуск")
+		if err := m.sendKeyboard(userID, chatID, text, buttons); err != nil {
+			logrus.WithError(err).Info("open_app keyboard failed — trying username / link")
+			// Username-only web_app (per MAX OpenAppButton docs).
+			if u := m.Username(); u != "" {
+				alt := map[string]interface{}{"type": "open_app", "text": "Запуск", "web_app": u}
+				if m.botID != 0 {
+					alt["contact_id"] = m.botID
+				}
+				if err2 := m.sendKeyboard(userID, chatID, text, [][]map[string]interface{}{
+					{alt},
+					{{"type": "link", "text": "Открыть в MAX", "url": start}},
+					quick,
+				}); err2 == nil {
+					return nil
+				}
+			}
+			if err2 := m.sendKeyboard(userID, chatID, text, [][]map[string]interface{}{
+				{{"type": "link", "text": "Запуск", "url": start}},
+				quick,
+			}); err2 == nil {
+				return nil
+			}
 		} else {
 			return nil
 		}
 	}
 
-	// 2) Reliable fallback: https link + command buttons.
+	// Last resort: external studio (browser, not in-MAX WebView).
 	buttons := [][]map[string]interface{}{quick}
 	if studioURL != "" {
 		buttons = [][]map[string]interface{}{
-			{{"type": "link", "text": "Запуск", "url": studioURL}},
+			{{"type": "link", "text": "Студия в браузере", "url": studioURL}},
 			quick,
 		}
 	}
@@ -289,6 +317,14 @@ func (m *MAXClient) Me() (map[string]interface{}, error) {
 	_ = json.Unmarshal(b, &out)
 	if u, ok := out["username"].(string); ok && u != "" {
 		m.SetUsername(u)
+	}
+	switch id := out["user_id"].(type) {
+	case float64:
+		m.botID = int64(id)
+	case json.Number:
+		if n, err := id.Int64(); err == nil {
+			m.botID = n
+		}
 	}
 	return out, nil
 }
