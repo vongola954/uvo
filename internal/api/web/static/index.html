@@ -768,7 +768,6 @@
       if (p.instrumental) setGenMode('instrumental');
       else if (p.lyrics_hint && !p.prompt) setGenMode('lyrics');
       else setGenMode('idea');
-      setWizStep(1);
       if (prompt) prompt.value = p.prompt || '';
       if (style && p.style) {
         let found = false;
