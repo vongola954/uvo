@@ -40,6 +40,8 @@ func (d *Deps) Generate(c *gin.Context) {
 	if mode == "instrumental" {
 		req.Instrumental = true
 	}
+	// Create flow: always infer genre from idea+lyrics (manual genre is edit-only).
+	req.Style = services.InferStyleFromText(req.Prompt, req.Lyrics)
 	if err := services.ValidateGenerateMode(mode, req.Prompt, req.Style, req.Lyrics, req.Duration, req.Instrumental); err != nil {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return

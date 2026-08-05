@@ -249,7 +249,6 @@
   function init() {
     applyMiniAppLayout();
     bindNav();
-    mountStyleChips(qs('#style-chips'));
     initFromQuery();
     let n = 0;
     const t = setInterval(() => {

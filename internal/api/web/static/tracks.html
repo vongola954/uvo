@@ -90,17 +90,62 @@ async function shareFeed(id) {
   }
   alert('В ленте');
 }
-async function editTrack(id, title) {
-  const style = prompt('Новый стиль (пусто = без изменений)', '') || '';
-  const lyrics = prompt('Новые стихи (пусто = без изменений)', '') || '';
-  const promptText = prompt('Промпт правки', title || '') || '';
-  const res = await UVO.api('/api/tracks/' + id + '/edit', {
-    method: 'POST',
-    body: JSON.stringify({ style, lyrics, prompt: promptText }),
+const EDIT_GENRES = [
+  '', 'Поп-музыка', 'Хип-хоп и R&B', 'Электронная музыка', 'Рок и метал',
+  'Шансон', 'Джаз и блюз', 'Кантри', 'Фолк', 'Регги', 'Классика', 'Детские',
+];
+async function editTrack(id, title, currentGenre) {
+  const wrap = document.createElement('div');
+  wrap.className = 'fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50';
+  wrap.innerHTML =
+    '<div class="bg-zinc-900 border border-white/10 rounded-2xl p-5 max-w-md w-full space-y-3">' +
+    '<h2 class="font-bold text-white">Правка трека</h2>' +
+    '<p class="text-xs text-zinc-500">Жанр можно сменить здесь. При создании он выбирался автоматически.</p>' +
+    '<label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Жанр</label>' +
+    '<select id="edit-genre" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm text-white"></select>' +
+    '<input id="edit-genre-custom" type="text" placeholder="Свой стиль (опц.)" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm text-white">' +
+    '<label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Новые стихи (опц.)</label>' +
+    '<textarea id="edit-lyrics" rows="4" placeholder="Оставьте пустым, чтобы не менять" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm text-white"></textarea>' +
+    '<label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Промпт правки</label>' +
+    '<input id="edit-prompt" type="text" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm text-white">' +
+    '<div class="flex gap-2 pt-1">' +
+    '<button id="edit-go" class="flex-1 text-xs px-3 py-2 rounded-lg bg-emerald-500 text-black font-bold">Сохранить (−1)</button>' +
+    '<button id="edit-cancel" class="text-xs px-3 py-2 rounded-lg border border-white/10">Отмена</button>' +
+    '</div></div>';
+  document.body.appendChild(wrap);
+  const sel = wrap.querySelector('#edit-genre');
+  EDIT_GENRES.forEach((g) => {
+    const o = document.createElement('option');
+    o.value = g;
+    o.textContent = g || 'Без изменений';
+    sel.appendChild(o);
   });
-  const d = await res.json().catch(() => ({}));
-  if (!res.ok) { alert((d.error && d.error.message) || 'Ошибка'); return; }
-  alert('Готово'); load();
+  const cur = (currentGenre || '').trim();
+  if (cur) {
+    let found = false;
+    for (const o of sel.options) if (o.value === cur) { found = true; break; }
+    if (!found) {
+      const o = document.createElement('option');
+      o.value = cur; o.textContent = cur; sel.appendChild(o);
+    }
+    sel.value = cur;
+  }
+  wrap.querySelector('#edit-prompt').value = title || '';
+  wrap.querySelector('#edit-cancel').onclick = () => wrap.remove();
+  wrap.querySelector('#edit-go').onclick = async () => {
+    const custom = (wrap.querySelector('#edit-genre-custom').value || '').trim();
+    const style = custom || sel.value || '';
+    const lyrics = wrap.querySelector('#edit-lyrics').value || '';
+    const promptText = wrap.querySelector('#edit-prompt').value || '';
+    wrap.remove();
+    const res = await UVO.api('/api/tracks/' + id + '/edit', {
+      method: 'POST',
+      body: JSON.stringify({ style, lyrics, prompt: promptText }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert((d.error && d.error.message) || 'Ошибка'); return; }
+    alert('Готово'); load();
+  };
 }
 function openPortrait(id) {
   portraitTrackId = id;
@@ -165,10 +210,11 @@ async function load() {
       const title = t.Title || t.title || 'Трек';
       const dur = t.Duration || t.duration || '?';
       const id = t.ID || t.id;
+      const genre = t.Genre || t.genre || '';
       const pub = !!(t.IsPublic || t.is_public);
       const card = UVO.el('div', { className: 'glass p-4 space-y-2' }, [
         UVO.el('div', { className: 'font-medium text-white', text: title + ' · ' + dur + 's' }),
-        UVO.el('div', { className: 'text-xs ' + (pub ? 'text-emerald-400' : 'text-zinc-500'), text: pub ? 'публичный' : 'приватный' }),
+        UVO.el('div', { className: 'text-xs text-zinc-500', text: (genre ? genre + ' · ' : '') + (pub ? 'публичный' : 'приватный') }),
         UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + id + '/play' }),
       ]);
       const actions = UVO.el('div', { className: 'flex flex-wrap gap-2' });
@@ -182,7 +228,7 @@ async function load() {
       };
       mk(pub ? 'Сделать приватным' : 'Сделать публичным', () => setPublic(id, !pub).catch(e => alert(e.message)));
       mk('В ленту', () => shareFeed(id));
-      mk('Правка (−1)', () => editTrack(id, title));
+      mk('Правка (−1)', () => editTrack(id, title, genre));
       mk('Минусовка (−2)', () => { location.href = '/karaoke.html?id=' + id; });
       mk('Скачать mp3', () => {
         UVO.downloadFile('/tracks/' + id + '/download', 'uvo-track-' + id + '.mp3')
