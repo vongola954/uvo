@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"uvo/internal/clients"
 	"uvo/internal/middleware"
-	"uvo/internal/models"
 	"uvo/internal/services"
 )
 
@@ -137,14 +137,28 @@ func (d *Deps) Generate(c *gin.Context) {
 			secret = d.Cfg.JWTSecret
 		}
 		if !d.Jobs.ClaimProcessing(jobID) {
-			// Lost CAS — do not run provider; refund the credit we took as owner.
-			d.Credits.Refund(userID, 1)
-			d.Jobs.MarkFailedRefunded(jobID, "lost claim")
+			// Lost CAS or already timed out — refund only if we win fail CAS.
+			if d.Jobs.TryMarkFailedRefunded(jobID, "lost claim") {
+				d.Credits.Refund(userID, 1)
+			}
 			return
 		}
+		stopHB := make(chan struct{})
+		go func() {
+			t := time.NewTicker(2 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-stopHB:
+					return
+				case <-t.C:
+					d.Jobs.Touch(jobID)
+				}
+			}
+		}()
 		tracks, err := d.Gen.GenerateAll(genReq)
+		close(stopHB)
 		if err != nil {
-			d.Credits.Refund(userID, 1)
 			msg := safeErrMessage(err)
 			middleware.IncGenFail()
 			logrus.WithError(err).WithFields(logrus.Fields{
@@ -152,27 +166,28 @@ func (d *Deps) Generate(c *gin.Context) {
 				"user_id": userID,
 				"err_msg": err.Error(),
 			}).Warn("generate job failed")
-			d.Jobs.Update(jobID, func(j *models.JobRecord) {
-				j.Status = string(services.JobFailed)
-				j.Error = msg
-				j.Refunded = true
-			})
+			if d.Jobs.TryMarkFailedRefunded(jobID, msg) {
+				d.Credits.Refund(userID, 1)
+			}
 			return
 		}
 		track := tracks[0]
+		fields := map[string]interface{}{
+			"track_id":     track.ID,
+			"title":        track.Title,
+			"duration":     track.Duration,
+			"play_url":     fmt.Sprintf("/tracks/%d/play", track.ID),
+			"download_url": services.SignTrackDownloadURL(track.ID, secret),
+		}
+		if len(tracks) > 1 {
+			fields["alt_track_id"] = tracks[1].ID
+			fields["alt_play_url"] = fmt.Sprintf("/tracks/%d/play", tracks[1].ID)
+		}
+		if !d.Jobs.CompleteDone(jobID, fields) {
+			logrus.WithField("job_id", jobID).Warn("generate finished after timeout/refund — not marking done")
+			return
+		}
 		middleware.IncGenOK()
-		d.Jobs.Update(jobID, func(j *models.JobRecord) {
-			j.Status = string(services.JobDone)
-			j.TrackID = track.ID
-			j.Title = track.Title
-			j.Duration = track.Duration
-			j.PlayURL = fmt.Sprintf("/tracks/%d/play", track.ID)
-			j.DownloadURL = services.SignTrackDownloadURL(track.ID, secret)
-			if len(tracks) > 1 {
-				j.AltTrackID = tracks[1].ID
-				j.AltPlayURL = fmt.Sprintf("/tracks/%d/play", tracks[1].ID)
-			}
-		})
 	})
 
 	c.JSON(202, gin.H{"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "mode": mode})

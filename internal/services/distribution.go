@@ -42,9 +42,27 @@ type DistributeRequest struct {
 	Notes     string
 }
 
+// FindActive returns the latest non-terminal release for a user track (idempotency).
+func (s *DistributionService) FindActive(userID string, trackID uint) (*models.DistributionRelease, error) {
+	if s == nil || s.db == nil || userID == "" || trackID == 0 {
+		return nil, nil
+	}
+	var rel models.DistributionRelease
+	err := s.db.Where("user_id = ? AND track_id = ? AND status IN ?",
+		userID, trackID, []string{"queued", "submitted", "live"}).
+		Order("created_at DESC").First(&rel).Error
+	if err != nil {
+		return nil, nil
+	}
+	return &rel, nil
+}
+
 func (s *DistributionService) Submit(req *DistributeRequest) (*models.DistributionRelease, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("distribution unavailable")
+	}
+	if existing, _ := s.FindActive(req.UserID, req.TrackID); existing != nil {
+		return existing, nil
 	}
 	track, err := s.trackRepo.GetByID(req.TrackID)
 	if err != nil || track == nil || track.UserID != req.UserID {

@@ -345,8 +345,12 @@ func EnsureMediaRootWritable(root string) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if n <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n])
 	}
 	return s
 }

@@ -59,10 +59,18 @@ async function load() {
       const id = r.id || r.ID || '';
       const card = document.createElement('div');
       card.className = 'glass p-4 space-y-1';
-      card.innerHTML =
-        '<div class="font-medium text-white">' + title + (artist ? ' · ' + artist : '') + '</div>' +
-        '<div class="text-xs text-emerald-400/90">' + status + '</div>' +
-        '<div class="text-[11px] text-zinc-500">' + plats + (id ? ' · ' + id.slice(0, 8) : '') + '</div>';
+      const h = document.createElement('div');
+      h.className = 'font-medium text-white';
+      h.textContent = title + (artist ? ' · ' + artist : '');
+      const st = document.createElement('div');
+      st.className = 'text-xs text-emerald-400/90';
+      st.textContent = status;
+      const meta = document.createElement('div');
+      meta.className = 'text-[11px] text-zinc-500';
+      meta.textContent = plats + (id ? ' · ' + String(id).slice(0, 8) : '');
+      card.appendChild(h);
+      card.appendChild(st);
+      card.appendChild(meta);
       el.appendChild(card);
     });
   } catch (e) {

@@ -115,6 +115,24 @@ func TestDeletePendingAfterSpendFail(t *testing.T) {
 	}
 }
 
+func TestCompleteDoneRejectedAfterFailRefund(t *testing.T) {
+	s := NewJobStore(jobsTestDB(t))
+	j, _ := s.CreateOrClaim("u1", "done-race")
+	if !s.ClaimProcessing(j.ID) {
+		t.Fatal("claim")
+	}
+	if !s.TryMarkFailedRefunded(j.ID, "timeout") {
+		t.Fatal("fail cas")
+	}
+	if s.CompleteDone(j.ID, map[string]interface{}{"title": "x"}) {
+		t.Fatal("complete must fail after refund")
+	}
+	got, _ := s.Get(j.ID)
+	if got.Status != JobFailed || !got.Refunded {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestFailStaleAndRefund(t *testing.T) {
 	db := jobsTestDB(t)
 	if err := db.AutoMigrate(&models.CreditBalance{}); err != nil {

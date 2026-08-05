@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gorm.io/gorm"
+
 	"uvo/internal/models"
 )
 
@@ -63,10 +65,8 @@ func resolveLyricsLLMConfig() lyricsLLMConfig {
 		if model == "" {
 			model = "openai-fast"
 		}
-		if key == "" || placeholderKey {
-			key = "not-needed"
-		}
-		return lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: "keyless", SendAuth: true}
+		// Never forward a real OPENAI_API_KEY to a third-party keyless proxy.
+		return lyricsLLMConfig{BaseURL: base, APIKey: "not-needed", Model: model, Provider: "keyless", SendAuth: true}
 	case "gemini":
 		gkey := firstNonEmptyEnv("GEMINI_API_KEY", "VEO_API_KEY", "GOOGLE_API_KEY")
 		if gkey == "" {
@@ -201,16 +201,23 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 
 	if limiter != nil && limiter.db != nil {
 		dayAgo := time.Now().Add(-24 * time.Hour)
-		var n int64
-		_ = limiter.db.Model(&models.RateEvent{}).
-			Where("user_id = ? AND kind = ? AND created_at > ?", userID, "lyrics_assist", dayAgo).
-			Count(&n).Error
-		if int(n) >= lyricsAssistDailyCap {
-			return "", fmt.Errorf("лимит черновиков текста: %d/сутки", lyricsAssistDailyCap)
+		err := limiter.db.Transaction(func(tx *gorm.DB) error {
+			var n int64
+			if err := tx.Model(&models.RateEvent{}).
+				Where("user_id = ? AND kind = ? AND created_at > ?", userID, "lyrics_assist", dayAgo).
+				Count(&n).Error; err != nil {
+				return err
+			}
+			if int(n) >= lyricsAssistDailyCap {
+				return fmt.Errorf("лимит черновиков текста: %d/сутки", lyricsAssistDailyCap)
+			}
+			return tx.Create(&models.RateEvent{
+				UserID: userID, Kind: "lyrics_assist", CreatedAt: time.Now(),
+			}).Error
+		})
+		if err != nil {
+			return "", err
 		}
-		_ = limiter.db.Create(&models.RateEvent{
-			UserID: userID, Kind: "lyrics_assist", CreatedAt: time.Now(),
-		}).Error
 	}
 
 	if cfg.Provider == "local" {

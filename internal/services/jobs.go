@@ -138,18 +138,48 @@ func (s *JobStore) SetCreditsSpent(id string, n int) {
 
 // MarkFailedRefunded CAS-fails a job and marks credits as already refunded (avoids double refund).
 func (s *JobStore) MarkFailedRefunded(id, errMsg string) {
-	_ = s.db.Model(&models.JobRecord{}).
-		Where("id = ? AND refunded = ?", id, false).
+	_ = s.TryMarkFailedRefunded(id, errMsg)
+}
+
+// TryMarkFailedRefunded CAS-fails pending/processing → failed+refunded.
+// Returns true only when this caller should issue the credit refund.
+func (s *JobStore) TryMarkFailedRefunded(id, errMsg string) bool {
+	res := s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND status IN ? AND refunded = ?", id, []string{JobPending, JobProcessing}, false).
 		Updates(map[string]interface{}{
 			"status":     JobFailed,
 			"error":      errMsg,
 			"refunded":   true,
 			"updated_at": time.Now(),
-		}).Error
+		})
+	return res.Error == nil && res.RowsAffected == 1
 }
 
-// FailStaleAndRefund fails pending/processing jobs older than age and refunds CreditsSpent.
-// Returns number of jobs refunded. Safe under concurrent workers (CAS on status+refunded).
+// CompleteDone CAS-marks a processing job done. Fails if already failed/refunded/timed out.
+func (s *JobStore) CompleteDone(id string, fields map[string]interface{}) bool {
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
+	fields["status"] = JobDone
+	fields["updated_at"] = time.Now()
+	res := s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND status = ? AND refunded = ?", id, JobProcessing, false).
+		Updates(fields)
+	return res.Error == nil && res.RowsAffected == 1
+}
+
+// Touch bumps updated_at on a processing job (heartbeat against stale sweeper).
+func (s *JobStore) Touch(id string) {
+	_ = s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND status = ?", id, JobProcessing).
+		Update("updated_at", time.Now()).Error
+}
+
+const DefaultStaleProcessingAge = 45 * time.Minute
+
+// FailStaleAndRefund fails stale pending/processing jobs and refunds CreditsSpent.
+// Pending uses `age` (default 15m). Processing uses a longer window so AceMusic jobs
+// with heartbeats are not refunded while still running.
 func (s *JobStore) FailStaleAndRefund(age time.Duration, credits *CreditService) int {
 	if age <= 0 {
 		age = DefaultStaleJobAge
@@ -157,28 +187,27 @@ func (s *JobStore) FailStaleAndRefund(age time.Duration, credits *CreditService)
 	if credits == nil {
 		return 0
 	}
+	n := 0
+	n += s.failStaleStatus(JobPending, age, credits)
+	n += s.failStaleStatus(JobProcessing, DefaultStaleProcessingAge, credits)
+	return n
+}
+
+func (s *JobStore) failStaleStatus(status string, age time.Duration, credits *CreditService) int {
 	cut := time.Now().Add(-age)
 	var list []models.JobRecord
-	if err := s.db.Where("status IN ? AND updated_at < ? AND refunded = ?",
-		[]string{JobPending, JobProcessing}, cut, false).Find(&list).Error; err != nil {
+	if err := s.db.Where("status = ? AND updated_at < ? AND refunded = ?", status, cut, false).
+		Find(&list).Error; err != nil {
 		return 0
 	}
 	n := 0
 	for _, j := range list {
-		res := s.db.Model(&models.JobRecord{}).
-			Where("id = ? AND status IN ? AND refunded = ?", j.ID, []string{JobPending, JobProcessing}, false).
-			Updates(map[string]interface{}{
-				"status":     JobFailed,
-				"error":      "timeout: генерация не завершилась вовремя, кредиты возвращены",
-				"refunded":   true,
-				"updated_at": time.Now(),
-			})
-		if res.Error != nil || res.RowsAffected != 1 {
+		if !s.TryMarkFailedRefunded(j.ID, "timeout: генерация не завершилась вовремя, кредиты возвращены") {
 			continue
 		}
 		spent := j.CreditsSpent
 		if spent <= 0 {
-			spent = 1 // legacy / race: create winner always spends 1 before worker
+			spent = 1
 		}
 		credits.Refund(j.UserID, spent)
 		n++

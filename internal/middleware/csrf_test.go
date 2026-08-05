@@ -47,6 +47,43 @@ func TestCSRFGenerateRequiresHeader(t *testing.T) {
 	}
 }
 
+func TestCSRFAuthExchangeRequiresHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(CSRF())
+	r.POST("/api/auth/exchange", func(c *gin.Context) { c.Status(200) })
+	r.GET("/warm", func(c *gin.Context) { c.Status(200) })
+
+	warm := httptest.NewRecorder()
+	r.ServeHTTP(warm, httptest.NewRequest(http.MethodGet, "/warm", nil))
+	var csrf string
+	for _, c := range warm.Result().Cookies() {
+		if c.Name == "uvo_csrf" {
+			csrf = c.Value
+		}
+	}
+	if csrf == "" {
+		t.Fatal("csrf cookie")
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/exchange", nil)
+	req.AddCookie(&http.Cookie{Name: "uvo_csrf", Value: csrf})
+	r.ServeHTTP(w, req)
+	if w.Code != 403 {
+		t.Fatalf("exchange without CSRF want 403, got %d", w.Code)
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/exchange", nil)
+	req2.AddCookie(&http.Cookie{Name: "uvo_csrf", Value: csrf})
+	req2.Header.Set("X-CSRF-Token", csrf)
+	r.ServeHTTP(w2, req2)
+	if w2.Code != 200 {
+		t.Fatalf("exchange with CSRF want 200, got %d", w2.Code)
+	}
+}
+
 func TestCSRFMaxWebAppExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

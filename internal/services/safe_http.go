@@ -178,8 +178,18 @@ func SafeDownload(rawURL, destPath string, maxBytes int64) error {
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, io.LimitReader(resp.Body, maxBytes))
-	return err
+	written, err := io.Copy(out, io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		_ = out.Close()
+		_ = os.Remove(destPath)
+		return err
+	}
+	if written > maxBytes {
+		_ = out.Close()
+		_ = os.Remove(destPath)
+		return fmt.Errorf("download exceeds %d bytes", maxBytes)
+	}
+	return nil
 }
 
 func saveDataURL(rawURL, destPath string, maxBytes int64) error {

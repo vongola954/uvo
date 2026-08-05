@@ -18,6 +18,7 @@ import (
 	"uvo/internal/clients"
 	"uvo/internal/config"
 	"uvo/internal/middleware"
+	"uvo/internal/models"
 	"uvo/internal/repository"
 	"uvo/internal/services"
 )
@@ -53,7 +54,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.10.4"
+		d.Version = "2.10.5"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -208,11 +209,11 @@ func (d *Deps) authExchange(c *gin.Context) {
 	var req struct {
 		Code string `json:"code"`
 	}
-	_ = c.ShouldBindJSON(&req)
-	if req.Code == "" {
-		req.Code = c.Query("code")
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Code) == "" {
+		middleware.AbortJSON(c, 400, "validation_error", "code required in JSON body")
+		return
 	}
-	uid, ok := d.Logins.Consume(req.Code)
+	uid, ok := d.Logins.Consume(strings.TrimSpace(req.Code))
 	if !ok {
 		middleware.AbortJSON(c, 401, "invalid_code", "код недействителен или уже использован")
 		return
@@ -406,18 +407,35 @@ func (d *Deps) playVocals(c *gin.Context)       { d.serveTrackSide(c, "vocals") 
 func (d *Deps) playVideo(c *gin.Context)        { d.serveTrackSide(c, "video") }
 
 func (d *Deps) serveMediaAsset(c *gin.Context) {
-	if middleware.UserID(c) == "" {
+	uid := middleware.UserID(c)
+	if uid == "" {
 		c.Status(401)
 		return
 	}
-	name := c.Param("name")
-	path, err := services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, name))
-	if err != nil {
-		path, err = services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, filepath.Base(name)))
-		if err != nil {
+	base := filepath.Base(c.Param("name"))
+	if base == "" || base == "." || base == ".." {
+		c.Status(404)
+		return
+	}
+	if d.DB != nil {
+		var assets []models.MediaAsset
+		_ = d.DB.Where("user_id = ?", uid).Order("id DESC").Limit(80).Find(&assets).Error
+		owned := false
+		for _, a := range assets {
+			if filepath.Base(a.FilePath) == base {
+				owned = true
+				break
+			}
+		}
+		if !owned {
 			c.Status(404)
 			return
 		}
+	}
+	path, err := services.SafeMediaPath(d.Cfg.MediaRoot, filepath.Join(d.Cfg.MediaRoot, base))
+	if err != nil {
+		c.Status(404)
+		return
 	}
 	c.File(path)
 }

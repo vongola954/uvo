@@ -29,6 +29,11 @@ func (d *Deps) upscaleImage(c *gin.Context) {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
 	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, services.UpscaleCost)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
+		return
+	}
 	res, err := d.MediaFX.Upscale(uid, data, name)
 	if err != nil {
 		d.Credits.Refund(uid, services.UpscaleCost)
@@ -51,6 +56,11 @@ func (d *Deps) animateImage(c *gin.Context) {
 	}
 	if err := d.Credits.Spend(uid, services.AnimateCost); err != nil {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
+		return
+	}
+	if err := d.Limiter.Allow(uid); err != nil {
+		d.Credits.Refund(uid, services.AnimateCost)
+		middleware.AbortJSON(c, 429, "rate_limit", err.Error())
 		return
 	}
 	res, err := d.MediaFX.Animate(uid, data, name, c.PostForm("prompt"))
@@ -122,7 +132,11 @@ func (d *Deps) distributeTrack(c *gin.Context) {
 		return
 	}
 	uid := middleware.UserID(c)
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		middleware.AbortJSON(c, 400, "validation_error", "invalid track id")
+		return
+	}
 	var req struct {
 		Title     string   `json:"title"`
 		Artist    string   `json:"artist"`
@@ -131,6 +145,15 @@ func (d *Deps) distributeTrack(c *gin.Context) {
 		Notes     string   `json:"notes"`
 	}
 	_ = c.ShouldBindJSON(&req)
+	if existing, _ := d.Distribution.FindActive(uid, uint(id)); existing != nil {
+		c.JSON(200, gin.H{
+			"release":    existing,
+			"balance":    d.Credits.Balance(uid),
+			"idempotent": true,
+			"note":       "Релиз уже в очереди / на площадках — повторная отправка не списала кредиты.",
+		})
+		return
+	}
 	if err := d.Credits.Spend(uid, services.DistributionCost); err != nil {
 		c.JSON(402, gin.H{"error": gin.H{"code": "insufficient_credits", "message": err.Error()}, "balance": d.Credits.Balance(uid)})
 		return
@@ -140,7 +163,13 @@ func (d *Deps) distributeTrack(c *gin.Context) {
 	})
 	if err != nil {
 		d.Credits.Refund(uid, services.DistributionCost)
-		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		code := 400
+		if strings.Contains(err.Error(), "unavailable") {
+			code = 503
+		} else if !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "already") {
+			code = 502
+		}
+		middleware.AbortJSON(c, code, "distribution_error", err.Error())
 		return
 	}
 	c.JSON(200, gin.H{
@@ -166,7 +195,11 @@ func (d *Deps) listDistribution(c *gin.Context) {
 func (d *Deps) distributionWebhook(c *gin.Context) {
 	secret := strings.TrimSpace(c.GetHeader("X-UVO-Distribution-Secret"))
 	want := strings.TrimSpace(os.Getenv("DISTRIBUTION_WEBHOOK_SECRET"))
-	if want != "" && !middleware.SecretEqual(secret, want) {
+	if want == "" {
+		middleware.AbortJSON(c, 503, "not_configured", "DISTRIBUTION_WEBHOOK_SECRET required")
+		return
+	}
+	if !middleware.SecretEqual(secret, want) {
 		middleware.AbortJSON(c, 401, "unauthorized", "bad secret")
 		return
 	}
