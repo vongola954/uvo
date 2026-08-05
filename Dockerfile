@@ -7,7 +7,10 @@ RUN CGO_ENABLED=0 go build -o /uvo ./cmd/server
 
 FROM alpine:3.20
 # Copy CA bundle from build image — avoid `apk` (Amvera builders often cannot reach Alpine CDN).
+# Append Russian Trusted Root/Sub (Минцифры) — required for platform-api2.max.ru TLS.
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY internal/clients/certs/*.pem /tmp/ru-ca/
+RUN cat /tmp/ru-ca/*.pem >> /etc/ssl/certs/ca-certificates.crt && rm -rf /tmp/ru-ca
 RUN adduser -D -H -u 10001 uvo
 WORKDIR /app
 COPY --from=build /uvo .

@@ -28,7 +28,7 @@ func NewMAXClient(token, baseURL string) *MAXClient {
 	return &MAXClient{
 		token:   token,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 100 * time.Second},
+		client:  HTTPClient(100 * time.Second),
 	}
 }
 

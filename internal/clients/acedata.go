@@ -38,7 +38,7 @@ func NewAceDataClient(cfg *config.Config) *AceDataClient {
 		pollInt:   cfg.AceDataPollInterval,
 		maxWait:   cfg.AceDataMaxWait,
 		model:     cfg.SunoModel,
-		client:    &http.Client{Timeout: 120 * time.Second},
+		client:    HTTPClient(120 * time.Second),
 	}
 }
 

@@ -51,7 +51,7 @@ func NewAceMusicClient(cfg *config.Config) *AceMusicClient {
 		baseURL: base,
 		model:   model,
 		timeout: to,
-		client:  &http.Client{Timeout: to},
+		client:  HTTPClient(to),
 	}
 }
 

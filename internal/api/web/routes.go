@@ -323,6 +323,8 @@ func (d *Deps) maxWebhook(c *gin.Context) {
 		Updates    []clients.MAXUpdate `json:"updates"`
 		UpdateType string              `json:"update_type"`
 		ChatID     int64               `json:"chat_id"`
+		UserID     int64               `json:"user_id"`
+		Payload    string              `json:"payload"`
 		Message    *clients.MAXMessage `json:"message"`
 		User       *clients.MAXUser    `json:"user"`
 	}
@@ -336,7 +338,8 @@ func (d *Deps) maxWebhook(c *gin.Context) {
 		}
 	} else if body.UpdateType != "" {
 		d.MaxBot.HandleWebhookUpdate(clients.MAXUpdate{
-			UpdateType: body.UpdateType, ChatID: body.ChatID, Message: body.Message, User: body.User,
+			UpdateType: body.UpdateType, ChatID: body.ChatID, UserID: body.UserID,
+			Payload: body.Payload, Message: body.Message, User: body.User,
 		})
 	}
 	c.JSON(200, gin.H{"ok": true})
