@@ -174,6 +174,20 @@
     .style-chip.is-on { border-color: rgba(52,211,153,0.5); color: #34d399; background: rgba(52,211,153,0.1); }
     .dual-grid { display: grid; gap: 12px; }
     @media (min-width: 640px) { .dual-grid.has-alt { grid-template-columns: 1fr 1fr; } }
+    .wiz-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 1.25rem; }
+    .wiz-step {
+      text-align: center; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 8px 4px; border-radius: 12px; border: 1px solid var(--border); color: #71717a;
+    }
+    .wiz-step.is-on { color: var(--accent); border-color: rgba(52,211,153,.45); background: var(--accent-dim); }
+    .wiz-step.is-done { color: #a1a1aa; border-color: rgba(255,255,255,.12); }
+    .wiz-nav { display: flex; gap: 8px; margin-top: 1rem; }
+    .wiz-nav .btn-ghost, .wiz-nav .btn-primary { flex: 1; }
+    details.adv-box > summary {
+      cursor: pointer; list-style: none; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #71717a; margin-bottom: .75rem;
+    }
+    details.adv-box > summary::-webkit-details-marker { display: none; }
 
   </style>
 </head>
@@ -335,23 +349,47 @@
         </div>
 
         <div id="panel-gen">
-        <div id="preset-chips" class="flex flex-wrap gap-2 mb-4"></div>
-        <div class="flex gap-2 mb-4 text-xs font-semibold" id="gen-modes">
-          <button type="button" data-mode="idea" class="gen-mode px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Идея песни</button>
-          <button type="button" data-mode="lyrics" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Свой текст</button>
-          <button type="button" data-mode="instrumental" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Инструментал</button>
+        <div class="wiz-steps" id="wiz-steps" aria-label="Шаги создания">
+          <div class="wiz-step is-on" data-wiz="1">1 · Идея</div>
+          <div class="wiz-step" data-wiz="2">2 · Стиль</div>
+          <div class="wiz-step" data-wiz="3">3 · Текст</div>
+          <div class="wiz-step" data-wiz="4">4 · Создать</div>
         </div>
-        <p id="mode-hint" class="text-xs text-zinc-500 mb-4">Опишите настроение и звук — Suno напишет трек. −1 кредит ≈ 1 песня.</p>
+        <p id="mode-hint" class="text-xs text-zinc-500 mb-4">Как в Sonata: идея → стиль → стихи → трек. −1 кредит ≈ 1 песня.</p>
         <form id="gen-form" class="space-y-4">
           <input type="hidden" id="gen-mode" value="idea">
-          <div id="field-prompt">
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2" id="prompt-label">Промпт</label>
-            <textarea id="prompt" rows="3" placeholder="ночной synth-pop, женский вокал, город после дождя"></textarea>
+          <input type="hidden" id="instrumental" value="0">
+          <input type="hidden" id="idea-draft-first" value="0">
+
+          <div data-wiz-panel="1" class="space-y-4">
+            <div class="flex flex-wrap gap-2 text-xs font-semibold" id="gen-modes">
+              <button type="button" data-mode="idea" class="gen-mode px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Идея</button>
+              <button type="button" data-mode="lyrics" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Свой текст</button>
+              <button type="button" data-mode="instrumental" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Инструментал</button>
+            </div>
+            <div id="preset-chips" class="flex flex-wrap gap-2"></div>
+            <div id="field-prompt">
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2" id="prompt-label">Идея песни</label>
+              <textarea id="prompt" rows="4" placeholder="город после дождя, женский вокал, synth-pop, немного грусти"></textarea>
+            </div>
+            <div id="field-title">
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Название (опц.)</label>
+              <input id="track-title-input" type="text" maxlength="80" placeholder="Название песни">
+            </div>
+            <div class="wiz-nav">
+              <button type="button" class="btn-primary py-3 rounded-xl font-bold" data-wiz-next>Дальше · стиль</button>
+            </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+
+          <div data-wiz-panel="2" class="space-y-4 hidden">
             <div>
-              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стиль</label>
-              <select id="style"><option value="">Авто</option></select>
+              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Стиль (библиотека)</label>
+              <select id="style"><option value="">Авто / из чипов</option></select>
+            </div>
+            <div id="style-chips-wrap">
+              <p class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-1">Жанр · настроение · голос</p>
+              <div id="style-chips"></div>
+              <input id="style-free" type="text" class="mt-3" placeholder="Свои теги стиля (опц.)" maxlength="1000">
             </div>
             <div>
               <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Длина</label>
@@ -361,46 +399,54 @@
                 <option value="180">3 мин</option>
               </select>
             </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Провайдер</label>
-              <select id="music-provider">
-                <option value="acemusic" selected>AceMusic</option>
-                <option value="auto">Авто (AceData → AceMusic)</option>
-                <option value="acedata">AceData / Suno</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
-              <select id="voice_id"><option value="">По умолчанию</option></select>
+            <div class="wiz-nav">
+              <button type="button" class="btn-ghost py-3 rounded-xl font-semibold" data-wiz-prev>Назад</button>
+              <button type="button" class="btn-primary py-3 rounded-xl font-bold" data-wiz-next>Дальше · текст</button>
             </div>
           </div>
-          <div id="field-lyrics">
-            <div class="flex items-center justify-between mb-2">
-              <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500" id="lyrics-label">Стихи</label>
-              <button type="button" id="btn-lyrics-assist" class="text-[11px] text-emerald-400 hover:underline">Черновик текста</button>
+
+          <div data-wiz-panel="3" class="space-y-4 hidden">
+            <div id="field-lyrics">
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500" id="lyrics-label">Текст песни</label>
+                <button type="button" id="btn-lyrics-assist" class="text-[11px] text-emerald-400 hover:underline">Сгенерировать черновик</button>
+              </div>
+              <textarea id="lyrics" rows="10" placeholder="Куплет / припев… Или нажмите «Сгенерировать черновик»"></textarea>
+              <p id="lyrics-step-hint" class="text-[11px] text-zinc-600 mt-2">Можно править перед генерацией музыки. Для инструментала шаг можно пропустить.</p>
             </div>
-            <textarea id="lyrics" rows="3" placeholder="Опционально — или переключитесь в «Свой текст»"></textarea>
+            <div class="wiz-nav">
+              <button type="button" class="btn-ghost py-3 rounded-xl font-semibold" data-wiz-prev>Назад</button>
+              <button type="button" id="btn-wiz-skip-lyrics" class="btn-ghost py-3 rounded-xl font-semibold hidden">Без текста</button>
+              <button type="button" class="btn-primary py-3 rounded-xl font-bold" data-wiz-next>Дальше · создать</button>
+            </div>
           </div>
-          
-          <div id="field-title" class="hidden">
-            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Название</label>
-            <input id="track-title-input" type="text" maxlength="80" placeholder="Название песни (опц.)">
+
+          <div data-wiz-panel="4" class="space-y-4 hidden">
+            <div id="wiz-summary" class="glass p-4 text-sm text-zinc-400 space-y-1"></div>
+            <details class="adv-box">
+              <summary>Дополнительно</summary>
+              <div class="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Провайдер</label>
+                  <select id="music-provider">
+                    <option value="acemusic" selected>AceMusic</option>
+                    <option value="auto">Авто (AceData → AceMusic)</option>
+                    <option value="acedata">AceData / Suno</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Голос (AceData)</label>
+                  <select id="voice_id"><option value="">По умолчанию</option></select>
+                </div>
+              </div>
+            </details>
+            <div class="wiz-nav">
+              <button type="button" class="btn-ghost py-3 rounded-xl font-semibold" data-wiz-prev>Назад</button>
+              <button type="submit" id="btn-gen" class="btn-primary py-3 rounded-xl font-bold tracking-wide">
+                Создать песню · 1 кредит
+              </button>
+            </div>
           </div>
-          <div id="idea-draft-wrap" class="flex items-center gap-3 text-xs text-zinc-400">
-            <input type="checkbox" id="idea-draft-first" class="rounded border-white/20">
-            <label for="idea-draft-first">Сначала черновик текста с правками</label>
-          </div>
-          <div id="style-chips-wrap" class="hidden">
-            <p class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-1">Стили</p>
-            <div id="style-chips"></div>
-            <input id="style-free" type="text" class="mt-3" placeholder="Свой стиль / теги (опц.)" maxlength="1000">
-          </div>
-<input type="hidden" id="instrumental" value="0">
-          <button type="submit" id="btn-gen" class="btn-primary w-full py-4 rounded-2xl font-bold tracking-wide">
-            Создать песню · 1 кредит
-          </button>
         </form>
         </div>
 
@@ -447,9 +493,9 @@
           </div>
           <div class="progress-bar mb-3"><div id="progress"></div></div>
           <div class="flex justify-between text-[10px] uppercase tracking-wider text-zinc-600">
-            <span id="step-1">Промпт</span>
+            <span id="step-1">Идея</span>
             <span id="step-2">Очередь</span>
-            <span id="step-3">Suno</span>
+            <span id="step-3">Генерация</span>
             <span id="step-4">Готово</span>
           </div>
         </div>
@@ -549,12 +595,79 @@
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.10.0"></script>
-  <script src="/static/app-shell.js?v=2.10.0"></script>
+  <script src="/static/auth.js?v=2.10.3"></script>
+  <script src="/static/app-shell.js?v=2.10.3"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
     let genMode = 'idea';
+    let wizStep = 1;
+
+    function syncStyleFromChips() {
+      if (window.UVOApp && typeof UVOApp.syncStyleField === 'function') {
+        UVOApp.syncStyleField(document.getElementById('gen-form') || document);
+      }
+    }
+
+    function renderWizSummary() {
+      const el = document.getElementById('wiz-summary');
+      if (!el) return;
+      const modeLabel = genMode === 'lyrics' ? 'Свой текст' : (genMode === 'instrumental' ? 'Инструментал' : 'Идея');
+      const idea = (document.getElementById('prompt')?.value || '').trim();
+      const style = (document.getElementById('style')?.value || '').trim();
+      const lyrics = (document.getElementById('lyrics')?.value || '').trim();
+      const dur = document.getElementById('duration')?.value || '60';
+      const title = (document.getElementById('track-title-input')?.value || '').trim();
+      el.innerHTML =
+        '<div><span class="text-zinc-500">Режим:</span> ' + modeLabel + '</div>' +
+        (title ? '<div><span class="text-zinc-500">Название:</span> ' + title.replace(/</g,'&lt;') + '</div>' : '') +
+        '<div><span class="text-zinc-500">Идея:</span> ' + (idea || '—').replace(/</g,'&lt;').slice(0, 160) + '</div>' +
+        '<div><span class="text-zinc-500">Стиль:</span> ' + (style || 'авто').replace(/</g,'&lt;').slice(0, 120) + '</div>' +
+        '<div><span class="text-zinc-500">Текст:</span> ' + (genMode === 'instrumental' ? 'без вокала' : (lyrics ? (lyrics.split(/\n/).length + ' строк') : 'без текста')) + '</div>' +
+        '<div><span class="text-zinc-500">Длина:</span> ' + dur + 'с · при наличии — два варианта</div>';
+    }
+
+    function setWizStep(n) {
+      wizStep = Math.max(1, Math.min(4, n));
+      document.querySelectorAll('[data-wiz-panel]').forEach((p) => {
+        p.classList.toggle('hidden', Number(p.getAttribute('data-wiz-panel')) !== wizStep);
+      });
+      document.querySelectorAll('#wiz-steps .wiz-step').forEach((s) => {
+        const i = Number(s.getAttribute('data-wiz'));
+        s.classList.toggle('is-on', i === wizStep);
+        s.classList.toggle('is-done', i < wizStep);
+      });
+      if (wizStep === 2 && window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
+      if (wizStep === 4) {
+        syncStyleFromChips();
+        renderWizSummary();
+      }
+      const skip = document.getElementById('btn-wiz-skip-lyrics');
+      if (skip) skip.classList.toggle('hidden', genMode !== 'instrumental' && wizStep !== 3);
+      if (skip) skip.classList.toggle('hidden', !(wizStep === 3 && genMode === 'instrumental'));
+    }
+
+    function canLeaveWizStep(from) {
+      if (from === 1) {
+        const idea = (document.getElementById('prompt')?.value || '').trim();
+        const lyrics = (document.getElementById('lyrics')?.value || '').trim();
+        if (genMode === 'lyrics' && !lyrics && !idea) {
+          alert('Опишите идею или вставьте текст на следующем шаге — сначала кратко настроение');
+          // allow empty idea if they'll paste lyrics later — still need something
+        }
+        if (genMode !== 'lyrics' && !idea) {
+          alert('Опишите идею песни');
+          return false;
+        }
+      }
+      if (from === 2) syncStyleFromChips();
+      if (from === 3 && genMode === 'lyrics') {
+        const lyrics = (document.getElementById('lyrics')?.value || '').trim();
+        if (!lyrics) { alert('Вставьте или сгенерируйте текст песни'); return false; }
+      }
+      return true;
+    }
+
     window.setGenMode = function setGenMode(mode) {
       genMode = mode === 'lyrics' || mode === 'instrumental' ? mode : 'idea';
       const hidden = document.getElementById('gen-mode');
@@ -570,45 +683,60 @@
       const hint = document.getElementById('mode-hint');
       const lyricsLab = document.getElementById('lyrics-label');
       const promptLab = document.getElementById('prompt-label');
-      const fieldLyrics = document.getElementById('field-lyrics');
-      const chips = document.getElementById('style-chips-wrap');
-      const titleField = document.getElementById('field-title');
-      const draftWrap = document.getElementById('idea-draft-wrap');
+      const lyricsHint = document.getElementById('lyrics-step-hint');
       if (genMode === 'lyrics') {
-        if (hint) hint.textContent = 'Вставьте свои стихи — теги стиля ниже. −1 кредит.';
+        if (hint) hint.textContent = 'Шаг за шагом: свой текст → стиль → генерация. −1 кредит.';
         if (lyricsLab) lyricsLab.textContent = 'Текст (обязательно)';
-        if (promptLab) promptLab.textContent = 'Описание / настроение (опц.)';
-        if (fieldLyrics) fieldLyrics.classList.remove('hidden');
-        if (chips) chips.classList.remove('hidden');
-        if (titleField) titleField.classList.remove('hidden');
-        if (draftWrap) draftWrap.classList.add('hidden');
-        if (window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
+        if (promptLab) promptLab.textContent = 'Описание / настроение';
+        if (lyricsHint) lyricsHint.textContent = 'Вставьте готовый текст или сгенерируйте черновик по идее.';
       } else if (genMode === 'instrumental') {
-        if (hint) hint.textContent = 'Инструментал без вокала — описание или стили. −1 кредит.';
-        if (lyricsLab) lyricsLab.textContent = 'Стихи';
-        if (promptLab) promptLab.textContent = 'Описание';
-        if (fieldLyrics) fieldLyrics.classList.add('hidden');
-        if (chips) chips.classList.remove('hidden');
-        if (titleField) titleField.classList.remove('hidden');
-        if (draftWrap) draftWrap.classList.add('hidden');
-        if (window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
+        if (hint) hint.textContent = 'Инструментал: идея → стиль → создать (текст не нужен). −1 кредит.';
+        if (lyricsLab) lyricsLab.textContent = 'Текст';
+        if (promptLab) promptLab.textContent = 'Описание инструментала';
+        if (lyricsHint) lyricsHint.textContent = 'Для инструментала текст не используется — можно пропустить.';
       } else {
-        if (hint) hint.textContent = 'Опишите идею своими словами — нейросеть сочинит песню. −1 кредит.';
-        if (lyricsLab) lyricsLab.textContent = 'Стихи (опц.)';
+        if (hint) hint.textContent = 'Как в Sonata: идея → стиль → стихи → трек. −1 кредит.';
+        if (lyricsLab) lyricsLab.textContent = 'Текст песни';
         if (promptLab) promptLab.textContent = 'Идея песни';
-        if (fieldLyrics) fieldLyrics.classList.remove('hidden');
-        if (chips) chips.classList.add('hidden');
-        if (titleField) titleField.classList.add('hidden');
-        if (draftWrap) draftWrap.classList.remove('hidden');
+        if (lyricsHint) lyricsHint.textContent = 'Сгенерируйте черновик и поправьте перед музыкой.';
       }
+      if (window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
+      if (wizStep === 3 || wizStep === 4) setWizStep(wizStep);
     }
     document.querySelectorAll('.gen-mode').forEach((b) => {
       b.addEventListener('click', () => setGenMode(b.getAttribute('data-mode')));
     });
+    document.querySelectorAll('[data-wiz-next]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        if (!canLeaveWizStep(wizStep)) return;
+        if (wizStep === 2 && genMode === 'idea') {
+          // auto-offer draft when entering lyrics step empty
+          const ly = (document.getElementById('lyrics')?.value || '').trim();
+          setWizStep(3);
+          if (!ly) {
+            // soft prompt — user can click generate draft
+          }
+          return;
+        }
+        if (wizStep === 2 && genMode === 'instrumental') {
+          setWizStep(4);
+          return;
+        }
+        setWizStep(wizStep + 1);
+      });
+    });
+    document.querySelectorAll('[data-wiz-prev]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (wizStep === 4 && genMode === 'instrumental') setWizStep(2);
+        else setWizStep(wizStep - 1);
+      });
+    });
+    document.getElementById('btn-wiz-skip-lyrics')?.addEventListener('click', () => setWizStep(4));
     document.getElementById('btn-lyrics-assist')?.addEventListener('click', async () => {
       const idea = document.getElementById('prompt')?.value || '';
+      syncStyleFromChips();
       const style = document.getElementById('style')?.value || '';
-      if (!idea.trim()) { alert('Сначала опишите идею в промпте'); return; }
+      if (!idea.trim()) { alert('Сначала опишите идею на шаге 1'); setWizStep(1); return; }
       const btn = document.getElementById('btn-lyrics-assist');
       btn.disabled = true;
       btn.textContent = 'Пишу…';
@@ -621,14 +749,16 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((d.error && d.error.message) || 'assist unavailable');
         document.getElementById('lyrics').value = d.lyrics || '';
-        setGenMode('lyrics');
+        if (genMode === 'idea') setGenMode('lyrics');
+        setWizStep(3);
       } catch (e) {
         alert(e.message || 'Не удалось получить черновик текста');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Черновик текста';
+        btn.textContent = 'Сгенерировать черновик';
       }
     });
+    setWizStep(1);
 
     function applyPreset(p) {
       if (!p) return;
@@ -638,6 +768,7 @@
       if (p.instrumental) setGenMode('instrumental');
       else if (p.lyrics_hint && !p.prompt) setGenMode('lyrics');
       else setGenMode('idea');
+      setWizStep(1);
       if (prompt) prompt.value = p.prompt || '';
       if (style && p.style) {
         let found = false;
@@ -652,6 +783,7 @@
       if (lyrics && p.lyrics_hint) lyrics.value = p.lyrics_hint;
       if (window.UVOApp) UVOApp.setView('create');
       else document.getElementById('generate')?.scrollIntoView({ behavior: 'smooth' });
+      setWizStep(p.lyrics_hint ? 3 : 2);
     }
 
     function applyQueryPrefill() {
@@ -866,6 +998,7 @@
         if (!found) st.appendChild(UVO.el('option', { value: style, text: style }));
         st.value = style;
       }
+      setWizStep(3);
     });
 
     (async () => {
@@ -1091,7 +1224,7 @@
         bar.style.width = v + '%';
         pct.textContent = Math.floor(v) + '%';
         if (v > 15 && v <= 35) { setStep(2); status.textContent = 'В очереди...'; }
-        else if (v > 35) { setStep(3); status.textContent = 'Suno пишет трек...'; }
+        else if (v > 35) { setStep(3); status.textContent = 'Пишем трек...'; }
       }, 700);
       return (ok) => {
         clearInterval(t);
@@ -1124,30 +1257,14 @@
       const stopProgress = animateProgress();
 
 
-      if (document.getElementById('idea-draft-first')?.checked && (document.getElementById('gen-mode')?.value || genMode) === 'idea') {
-        const idea = document.getElementById('prompt')?.value || '';
-        if (!idea.trim()) { alert('Опишите идею'); btn.disabled = false; return; }
-        try {
-          await UVO.ensureDevToken();
-          const res = await UVO.api('/api/lyrics/assist', { method: 'POST', body: JSON.stringify({ idea, style: document.getElementById('style')?.value || '' }) });
-          const d = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error((d.error && d.error.message) || 'Не удалось получить черновик');
-          document.getElementById('lyrics').value = d.lyrics || '';
-          setGenMode('lyrics');
-          document.getElementById('idea-draft-first').checked = false;
-          document.getElementById('status-text').textContent = 'Черновик готов — проверьте стихи и нажмите «Создать» ещё раз';
-          stopProgress(false);
-          btn.disabled = false;
-          return;
-        } catch (e) {
-          stopProgress(false);
-          document.getElementById('status-text').textContent = 'Ошибка: ' + e.message;
-          btn.disabled = false;
-          return;
-        }
-      }
-
+      syncStyleFromChips();
       const mode = document.getElementById('gen-mode')?.value || genMode || 'idea';
+      if (mode === 'idea' && !(document.getElementById('prompt')?.value || '').trim()) {
+        stopProgress(false); alert('Опишите идею'); setWizStep(1); btn.disabled = false; btn.innerHTML = 'Создать песню · 1 кредит'; return;
+      }
+      if (mode === 'lyrics' && !(document.getElementById('lyrics')?.value || '').trim()) {
+        stopProgress(false); alert('Нужен текст песни'); setWizStep(3); btn.disabled = false; btn.innerHTML = 'Создать песню · 1 кредит'; return;
+      }
       const provider = document.getElementById('music-provider')?.value || 'auto';
       const body = {
         mode,
@@ -1265,7 +1382,7 @@
       } finally {
         btn.disabled = false;
         btn.classList.remove('opacity-80');
-        btn.innerHTML = 'GENERATE · −1';
+        btn.innerHTML = 'Создать песню · 1 кредит';
       }
     });
   </script>
