@@ -154,7 +154,22 @@
     }
 
     body.uvo-miniapp .uvo-marketing { display: none !important; }
+    body.uvo-miniapp .uvo-desktop-nav { display: none !important; }
     body.uvo-miniapp, body:not(.uvo-miniapp) { padding-bottom: 5.5rem; }
+
+    /* View router + .hidden fallback — MAX WebView often blocks cdn.tailwindcss.com */
+    .hidden { display: none !important; }
+    @media (min-width: 640px) {
+      .sm\:flex { display: flex !important; }
+    }
+    body[data-uvo-view] [data-uvo-view] { display: none !important; }
+    body[data-uvo-view="hub"] [data-uvo-view="hub"],
+    body[data-uvo-view="lyrics"] [data-uvo-view="lyrics"],
+    body[data-uvo-view="create"] [data-uvo-view="create"],
+    body[data-uvo-view="balance"] [data-uvo-view="balance"] {
+      display: block !important;
+    }
+
     .bottom-nav {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
       display: grid; grid-template-columns: repeat(4, 1fr);
@@ -166,6 +181,7 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 2px; padding: 8px 4px; border-radius: 14px; font-size: 10px; font-weight: 600;
       color: #71717a; background: transparent; border: 0; text-decoration: none;
+      -webkit-tap-highlight-color: transparent; cursor: pointer;
     }
     .bottom-nav .uvo-nav-active { color: var(--accent); background: var(--accent-dim); }
     .bottom-nav .nav-ico { font-size: 16px; line-height: 1; }
@@ -198,15 +214,15 @@
   <div class="wrap">
     <nav class="fixed top-0 inset-x-0 z-50">
       <div class="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
-        <a href="/" class="text-xl font-black tracking-tight">UVO<span style="color:var(--accent)">.</span></a>
-        <div class="hidden sm:flex gap-6 text-sm text-zinc-400">
+        <a href="/?view=hub" class="text-xl font-black tracking-tight" data-uvo-open="hub">UVO<span style="color:var(--accent)">.</span></a>
+        <div class="uvo-desktop-nav hidden sm:flex gap-6 text-sm text-zinc-400">
           <a href="#presets" class="hover:text-white transition">Пресеты</a>
           <a href="#showcase" class="hover:text-white transition">Витрина</a>
           <a href="#generate" class="hover:text-white transition">Студия</a>
           <a href="/tracks.html" class="hover:text-white transition">Треки</a>
           <a href="#pricing" class="hover:text-white transition">Тарифы</a>
         </div>
-        <a href="#generate" class="btn-primary text-sm font-semibold px-4 py-2 rounded-full">Создать</a>
+        <button type="button" data-uvo-open="create" class="btn-primary text-sm font-semibold px-4 py-2 rounded-full">Создать</button>
       </div>
     </nav>
 
@@ -595,8 +611,8 @@
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.10.3"></script>
-  <script src="/static/app-shell.js?v=2.10.3"></script>
+  <script src="/static/auth.js?v=2.10.8"></script>
+  <script src="/static/app-shell.js?v=2.10.8"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 

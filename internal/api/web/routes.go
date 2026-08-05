@@ -54,7 +54,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.10.7"
+		d.Version = "2.10.8"
 	}
 
 	r.Static("/static", "./internal/api/web/static")

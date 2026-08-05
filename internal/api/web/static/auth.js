@@ -379,8 +379,37 @@
     return true;
   }
 
+  /** Same-origin navigate keeping MAX #WebAppData hash (session depends on it). */
+  function go(path) {
+    try {
+      const u = new URL(path, location.origin);
+      if (!u.hash && location.hash) u.hash = location.hash;
+      location.assign(u.pathname + u.search + u.hash);
+    } catch (_) {
+      location.href = path;
+    }
+  }
+
+  function bindHashNav() {
+    if (document.documentElement.getAttribute('data-uvo-hash-nav') === '1') return;
+    document.documentElement.setAttribute('data-uvo-hash-nav', '1');
+    document.addEventListener('click', (e) => {
+      const a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const href = a.getAttribute('href') || '';
+      if (!href || href.charAt(0) === '#' || href.indexOf('://') >= 0 || href.indexOf('mailto:') === 0) return;
+      if (href.charAt(0) !== '/') return;
+      if (!location.hash) return;
+      e.preventDefault();
+      go(href);
+    }, true);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindHashNav);
+  else bindHashNav();
+
   global.UVO = {
     getToken, setToken, csrfToken, authHeaders, api, ensureDevToken, sessionOK,
-    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp, readInitData, downloadFile,
+    el, mountAuthBar, ensureMaxWebAppAuth, inMaxWebApp, readInitData, downloadFile, go,
   };
 })(window);
