@@ -52,7 +52,7 @@ func (r *TrackRepository) SetPublic(id uint, userID string, isPublic bool) (*mod
 	if track.UserID != userID {
 		return nil, ErrForbidden
 	}
-	if err := r.db.Model(track).Update("is_public", isPublic).Error; err != nil {
+	if err := r.db.Model(track).Updates(map[string]interface{}{"is_public": isPublic}).Error; err != nil {
 		return nil, err
 	}
 	track.IsPublic = isPublic

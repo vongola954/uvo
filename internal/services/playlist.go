@@ -35,7 +35,8 @@ func (s *PlaylistService) SetPublic(userID string, playlistID uint, isPublic boo
 	if p.UserID != userID {
 		return nil, fmt.Errorf("forbidden")
 	}
-	if err := s.db.Model(&p).Update("is_public", isPublic).Error; err != nil {
+	// map update: GORM must write false (zero value) for is_public
+	if err := s.db.Model(&p).Updates(map[string]interface{}{"is_public": isPublic}).Error; err != nil {
 		return nil, err
 	}
 	p.IsPublic = isPublic
@@ -43,19 +44,31 @@ func (s *PlaylistService) SetPublic(userID string, playlistID uint, isPublic boo
 }
 
 func (s *PlaylistService) AddTrack(userID string, playlistID, trackID uint) error {
+	if playlistID == 0 || trackID == 0 {
+		return fmt.Errorf("нужны playlist_id и track_id")
+	}
 	var p models.Playlist
 	if err := s.db.First(&p, playlistID).Error; err != nil {
-		return err
+		return fmt.Errorf("плейлист не найден")
 	}
 	if p.UserID != userID {
-		return fmt.Errorf("forbidden")
+		return fmt.Errorf("это чужой плейлист — войдите тем же аккаунтом, которым создавали")
 	}
 	var t models.Track
 	if err := s.db.First(&t, trackID).Error; err != nil {
-		return err
+		return fmt.Errorf("трек не найден")
 	}
 	if t.UserID != userID {
-		return fmt.Errorf("forbidden track")
+		return fmt.Errorf("трек другого аккаунта — создайте плейлист после входа через «Запуск»")
+	}
+	var n int64
+	if err := s.db.Model(&models.PlaylistTrack{}).
+		Where("playlist_id = ? AND track_id = ?", playlistID, trackID).
+		Count(&n).Error; err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil // already in playlist
 	}
 	return s.db.Create(&models.PlaylistTrack{PlaylistID: playlistID, TrackID: trackID}).Error
 }

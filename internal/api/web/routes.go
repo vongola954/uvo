@@ -685,11 +685,18 @@ func (d *Deps) addPlaylistTrack(c *gin.Context) {
 		TrackID uint `json:"track_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.AbortJSON(c, 400, "validation_error", err.Error())
+		middleware.AbortJSON(c, 400, "validation_error", "укажите track_id")
 		return
 	}
 	if err := d.Playlists.AddTrack(middleware.UserID(c), uint(pid), req.TrackID); err != nil {
-		middleware.AbortJSON(c, 403, "forbidden", err.Error())
+		msg := err.Error()
+		code := 400
+		if strings.Contains(msg, "чужой") || strings.Contains(msg, "другого аккаунта") {
+			code = 403
+		} else if strings.Contains(msg, "не найден") {
+			code = 404
+		}
+		middleware.AbortJSON(c, code, "playlist_error", msg)
 		return
 	}
 	c.JSON(200, gin.H{"ok": true})

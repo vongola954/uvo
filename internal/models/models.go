@@ -11,25 +11,25 @@ type User struct {
 }
 
 type Track struct {
-	ID             uint      `gorm:"primaryKey"`
-	UserID         string    `gorm:"not null;index"`
-	Title          string    `gorm:"not null"`
-	FilePath       string    `gorm:"not null"`
-	Duration       int
-	Genre          string
-	Key            string
-	BPM            int
-	VoiceProfileID string
-	ProviderAudioID string // AceData/Suno audio id for stems/mp4/timing
-	VideoPath       string // local or remote mp4 path/url
-	InstrumentalPath string
-	VocalsPath       string
-	IsPublic       bool      `gorm:"default:false"`
-	PlayCount      int       `gorm:"default:0"`
-	Prompt         string
-	Lyrics         string
-	Instrumental   bool      `gorm:"default:false"`
-	CreatedAt      time.Time
+	ID               uint      `json:"id" gorm:"primaryKey"`
+	UserID           string    `json:"user_id" gorm:"not null;index"`
+	Title            string    `json:"title" gorm:"not null"`
+	FilePath         string    `json:"-" gorm:"not null"`
+	Duration         int       `json:"duration"`
+	Genre            string    `json:"genre,omitempty"`
+	Key              string    `json:"key,omitempty"`
+	BPM              int       `json:"bpm,omitempty"`
+	VoiceProfileID   string    `json:"voice_profile_id,omitempty"`
+	ProviderAudioID  string    `json:"provider_audio_id,omitempty"`
+	VideoPath        string    `json:"video_path,omitempty"`
+	InstrumentalPath string    `json:"instrumental_path,omitempty"`
+	VocalsPath       string    `json:"vocals_path,omitempty"`
+	IsPublic         bool      `json:"is_public" gorm:"default:false"`
+	PlayCount        int       `json:"play_count" gorm:"default:0"`
+	Prompt           string    `json:"prompt,omitempty"`
+	Lyrics           string    `json:"lyrics,omitempty"`
+	Instrumental     bool      `json:"instrumental" gorm:"default:false"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // MediaAsset stores generated karaoke/portrait/video/upscale artifacts.
@@ -72,20 +72,20 @@ type VoiceProfile struct {
 }
 
 type Playlist struct {
-	ID        uint      `gorm:"primaryKey"`
-	UserID    string    `gorm:"not null;index"`
-	Name      string    `gorm:"not null"`
-	Description string
-	IsPublic  bool      `gorm:"default:false"`
-	Likes     int       `gorm:"default:0"`
-	CreatedAt time.Time
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	UserID      string    `json:"user_id" gorm:"not null;index"`
+	Name        string    `json:"name" gorm:"not null"`
+	Description string    `json:"description,omitempty"`
+	IsPublic    bool      `json:"is_public" gorm:"default:false"`
+	Likes       int       `json:"likes" gorm:"default:0"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type PlaylistTrack struct {
-	ID         uint `gorm:"primaryKey"`
-	PlaylistID uint `gorm:"not null;index"`
-	TrackID    uint `gorm:"not null;index"`
-	Position   int
+	ID         uint `json:"id" gorm:"primaryKey"`
+	PlaylistID uint `json:"playlist_id" gorm:"not null;index"`
+	TrackID    uint `json:"track_id" gorm:"not null;index"`
+	Position   int  `json:"position"`
 }
 
 type TrackRevision struct {

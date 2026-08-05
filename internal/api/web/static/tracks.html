@@ -5,7 +5,7 @@
 <title>UVO — Треки</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.10.15"></script>
+<script src="/static/auth.js?v=2.10.16"></script>
 <style>
   :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
   body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
@@ -89,6 +89,29 @@ async function shareFeed(id) {
     return;
   }
   alert('В ленте');
+}
+async function addToPlaylist(trackId) {
+  await UVO.ensureDevToken();
+  const res = await UVO.api('/api/playlists');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { alert((d.error && d.error.message) || 'Не удалось загрузить плейлисты'); return; }
+  const list = d.playlists || [];
+  if (!list.length) {
+    if (confirm('Плейлистов нет. Открыть страницу плейлистов?')) location.href = '/playlists.html';
+    return;
+  }
+  const lines = list.map((p, i) => (i + 1) + ') ' + (p.name || p.Name || ('#' + (p.id || p.ID)))).join('\n');
+  const pick = prompt('Номер плейлиста:\n' + lines, '1');
+  if (pick === null) return;
+  const idx = parseInt(pick, 10) - 1;
+  if (!(idx >= 0 && idx < list.length)) { alert('Неверный номер'); return; }
+  const pid = list[idx].id || list[idx].ID;
+  const add = await UVO.api('/api/playlists/' + pid + '/tracks', {
+    method: 'POST', body: JSON.stringify({ track_id: Number(trackId) }),
+  });
+  const ad = await add.json().catch(() => ({}));
+  if (!add.ok) { alert((ad.error && ad.error.message) || 'Не удалось добавить'); return; }
+  alert('Трек в плейлисте');
 }
 const EDIT_GENRES = [
   '', 'Поп-музыка', 'Хип-хоп и R&B', 'Электронная музыка', 'Рок и метал',
@@ -227,6 +250,7 @@ async function load() {
         actions.appendChild(b);
       };
       mk(pub ? 'Сделать приватным' : 'Сделать публичным', () => setPublic(id, !pub).catch(e => alert(e.message)));
+      mk('В плейлист', () => addToPlaylist(id).catch(e => alert(e.message)));
       mk('В ленту', () => shareFeed(id));
       mk('Правка (−1)', () => editTrack(id, title, genre));
       mk('Минусовка (−2)', () => { location.href = '/karaoke.html?id=' + id; });

@@ -12,7 +12,8 @@ import (
 
 func testDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dsn := "file:pl_" + t.Name() + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +42,41 @@ func TestPlaylistHidesPrivateTracksForNonOwner(t *testing.T) {
 	asGuest, err := ps.GetTracksForUser("bob", pl.ID)
 	if err != nil || len(asGuest) != 1 || !asGuest[0].IsPublic {
 		t.Fatalf("guest want 1 public got %#v err=%v", asGuest, err)
+	}
+}
+
+func TestPlaylistSetPublicAndAddTrack(t *testing.T) {
+	db := testDB(t)
+	ps := services.NewPlaylistService(db)
+	tr := &models.Track{UserID: "owner-u", Title: "t1", FilePath: "/t1-unique"}
+	if err := db.Create(tr).Error; err != nil {
+		t.Fatal(err)
+	}
+	pl, err := ps.Create("owner-u", "hits", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pl.IsPublic {
+		t.Fatal("want private")
+	}
+	pl, err = ps.SetPublic("owner-u", pl.ID, true)
+	if err != nil || !pl.IsPublic {
+		t.Fatalf("set public: %#v err=%v", pl, err)
+	}
+	var row models.Playlist
+	_ = db.First(&row, pl.ID)
+	if !row.IsPublic {
+		t.Fatal("db is_public not persisted")
+	}
+	if err := ps.AddTrack("owner-u", pl.ID, tr.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.AddTrack("owner-u", pl.ID, tr.ID); err != nil {
+		t.Fatal("duplicate add should be idempotent")
+	}
+	tracks, err := ps.GetTracks(pl.ID)
+	if err != nil || len(tracks) != 1 {
+		t.Fatalf("tracks=%d err=%v", len(tracks), err)
 	}
 }
 
