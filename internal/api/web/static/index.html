@@ -623,7 +623,7 @@
         document.getElementById('lyrics').value = d.lyrics || '';
         setGenMode('lyrics');
       } catch (e) {
-        alert(e.message || 'Нужен OPENAI_API_KEY на сервере');
+        alert(e.message || 'Не удалось получить черновик текста');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Черновик текста';
@@ -840,7 +840,7 @@
         await UVO.ensureDevToken();
         const res = await UVO.api('/api/lyrics/assist', { method: 'POST', body: JSON.stringify({ idea, style }) });
         const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error((d.error && d.error.message) || 'Нужен OPENAI_API_KEY');
+        if (!res.ok) throw new Error((d.error && d.error.message) || 'Не удалось получить черновик');
         document.getElementById('lyrics-draft').value = d.lyrics || '';
         if (status) status.textContent = 'Готово — отредактируйте и отправьте в песню';
       } catch (e) {
@@ -1131,7 +1131,7 @@
           await UVO.ensureDevToken();
           const res = await UVO.api('/api/lyrics/assist', { method: 'POST', body: JSON.stringify({ idea, style: document.getElementById('style')?.value || '' }) });
           const d = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error((d.error && d.error.message) || 'Нужен OPENAI_API_KEY для черновика');
+          if (!res.ok) throw new Error((d.error && d.error.message) || 'Не удалось получить черновик');
           document.getElementById('lyrics').value = d.lyrics || '';
           setGenMode('lyrics');
           document.getElementById('idea-draft-first').checked = false;

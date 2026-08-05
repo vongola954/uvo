@@ -53,7 +53,7 @@ type Deps struct {
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.10.0"
+		d.Version = "2.10.1"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
@@ -85,7 +85,7 @@ func Register(r *gin.Engine, d *Deps) {
 			"max_bot":            d.MaxOn,
 			"yookassa":           d.Yoo != nil && d.Yoo.Enabled(),
 			"dual_policy":        services.DualPolicyLabel(),
-			"lyrics_assist":      strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "",
+			"lyrics_assist":      services.LyricsAssistEnabled(),
 			"prod_guards":        prodGuards,
 			"credits_unlimited":  services.CreditsUnlimited(),
 			"media_upscale":      d.MediaFX != nil && d.MediaFX.EnabledUpscale(),

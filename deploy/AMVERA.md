@@ -44,7 +44,8 @@
 | `WEB_HOST` | `0.0.0.0` | нет |
 | `YOOKASSA_SHOP_ID` / `YOOKASSA_SECRET_KEY` | оплата | да |
 | `YOOKASSA_WEBHOOK_IPS` | опц. CIDR/IP | нет |
-| `OPENAI_API_KEY` | lyrics assist | да |
+| `OPENAI_API_KEY` | lyrics assist (опц.; без ключа — Pollinations) | нет |
+| `OPENAI_BASE_URL` / `LYRICS_LLM_PROVIDER` | override LLM endpoint | нет |
 | `METRICS_TOKEN` | `/metrics` + full `/health` | да |
 | `DUAL_OUTPUT` | `true` только после COST.md | нет |
 

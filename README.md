@@ -45,7 +45,7 @@ YOOKASSA_SHOP_ID=
 YOOKASSA_SECRET_KEY=
 METRICS_TOKEN=<random>       # для /metrics и /health?full=1
 # DUAL_OUTPUT=true           # 2 клипа (только после COST.md margin)
-# OPENAI_API_KEY=            # lyrics assist
+# OPENAI_API_KEY=            # опц. lyrics assist (без ключа — free Pollinations)
 ```
 
 `UVO_ALLOW_INSECURE=true` **игнорируется**, если `WEB_PUBLIC_URL` — публичный HTTPS.
@@ -60,7 +60,7 @@ METRICS_TOKEN=<random>       # для /metrics и /health?full=1
 
 ## Studio
 - Генерация (−1) · клон (−2) · кавер (−2) · караоке (−2) · portrait (−2/−3)
-- Черновик текста: `POST /api/lyrics/assist` (нужен `OPENAI_API_KEY`, без списания кредита музыки)
+- Черновик текста: `POST /api/lyrics/assist` (бесплатный Pollinations по умолчанию; опционально `OPENAI_API_KEY`, без списания кредита музыки)
 
 ## Docs
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** — ключевые моменты, версии, MAX, деплой, открытые задачи

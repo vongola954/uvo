@@ -1,7 +1,6 @@
 package web
 
 import (
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,8 +19,8 @@ func (d *Deps) lyricsAssist(c *gin.Context) {
 		middleware.AbortJSON(c, 400, "validation_error", err.Error())
 		return
 	}
-	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" {
-		middleware.AbortJSON(c, 503, "unavailable", "OPENAI_API_KEY не задан — lyrics assist выключен")
+	if !services.LyricsAssistEnabled() {
+		middleware.AbortJSON(c, 503, "unavailable", "lyrics assist выключен")
 		return
 	}
 	text, err := services.LyricsAssistDraft(uid, req.Idea, req.Style, d.Limiter)
