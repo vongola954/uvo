@@ -82,6 +82,14 @@ func TestParseAceMusicHTTPErrorAuth(t *testing.T) {
 	}
 }
 
+func TestParseAceMusicHTTPErrorCloudflare504(t *testing.T) {
+	err := ParseAceMusicHTTPError(504, []byte(`{"title":"Error 504: Gateway time-out","status":504}`))
+	pe := AsProviderError(err)
+	if pe == nil || pe.Code != "provider_timeout" {
+		t.Fatalf("%v", err)
+	}
+}
+
 func TestBuildAceMusicContent(t *testing.T) {
 	got := buildAceMusicContent(&GenerateRequest{Prompt: "pop", Lyric: "hello", Style: "dance"})
 	if !strings.Contains(got, "<prompt>") || !strings.Contains(got, "hello") {

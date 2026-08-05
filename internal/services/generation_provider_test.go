@@ -54,7 +54,23 @@ func TestShouldFallbackMusic(t *testing.T) {
 	if !shouldFallbackMusic(&clients.ProviderError{Code: "provider_balance_empty"}) {
 		t.Fatal("expected fallback")
 	}
+	if !shouldFallbackMusic(&clients.ProviderError{Code: "provider_timeout", Status: 504}) {
+		t.Fatal("expected timeout fallback")
+	}
+	if !shouldFallbackMusic(errors.New("AceMusic HTTP 504: Gateway time-out")) {
+		t.Fatal("expected 504 string fallback")
+	}
 	if shouldFallbackMusic(errors.New("random")) {
 		t.Fatal("unexpected fallback")
+	}
+}
+
+func TestGenerateClipsAceMusicTimeoutFallsBackAceData(t *testing.T) {
+	music := &stubMusicGen{err: &clients.ProviderError{Code: "provider_timeout", Status: 504, Message: "cf"}}
+	ace := &stubMusicGen{clips: []*clients.GenerateResponse{{AudioURL: "data:audio/mpeg;base64,QQ==", Title: "ok"}}}
+	svc := &GenerationService{aceClient: ace, aceMusic: music, musicProvider: "acemusic"}
+	clips, used, err := svc.generateClips(&clients.GenerateRequest{Prompt: "x"}, "acemusic")
+	if err != nil || used != "acedata" || len(clips) != 1 {
+		t.Fatalf("used=%s err=%v clips=%d", used, err, len(clips))
 	}
 }

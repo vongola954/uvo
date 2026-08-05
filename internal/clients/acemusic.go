@@ -97,6 +97,32 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 		payload["sample_mode"] = false
 	}
 
+	clips, err := c.doGenerateAll(req, payload)
+	if err == nil {
+		return clips, nil
+	}
+	// Cloudflare often 504s long free-tier jobs — one shorter retry before surfacing.
+	if isAceMusicTransient(err) {
+		short := *req
+		if short.Duration <= 0 || short.Duration > 45 {
+			short.Duration = 45
+		}
+		payload["audio_config"] = map[string]interface{}{
+			"format":         "mp3",
+			"vocal_language": "ru",
+			"duration":       clampAceMusicDuration(short.Duration),
+		}
+		logrus.WithError(err).Warn("AceMusic transient failure — retry with shorter duration")
+		if clips2, err2 := c.doGenerateAll(&short, payload); err2 == nil {
+			return clips2, nil
+		} else {
+			err = err2
+		}
+	}
+	return nil, err
+}
+
+func (c *AceMusicClient) doGenerateAll(req *GenerateRequest, payload map[string]interface{}) ([]*GenerateResponse, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal: %w", err)
@@ -116,7 +142,7 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 		if isTimeoutErr(err) {
 			return nil, &ProviderError{
 				Code:    "provider_timeout",
-				Message: "AceMusic не ответил вовремя. Выберите длину 1 мин и попробуйте снова.",
+				Message: "AceMusic не ответил вовремя (таймаут). Выберите 1 мин или провайдер «Авто».",
 				Status:  504,
 			}
 		}
@@ -164,6 +190,27 @@ func (c *AceMusicClient) GenerateAll(req *GenerateRequest) ([]*GenerateResponse,
 	return clips, nil
 }
 
+func isAceMusicTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	if pe := AsProviderError(err); pe != nil {
+		switch pe.Code {
+		case "provider_timeout", "provider_unavailable":
+			return true
+		}
+		if pe.Status == 502 || pe.Status == 503 || pe.Status == 504 {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "504") ||
+		strings.Contains(msg, "502") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "time-out") ||
+		strings.Contains(msg, "gateway")
+}
+
 func buildAceMusicContent(req *GenerateRequest) string {
 	prompt := strings.TrimSpace(req.Prompt)
 	if req.Style != "" {
@@ -191,8 +238,8 @@ func buildAceMusicContent(req *GenerateRequest) string {
 }
 
 func clampAceMusicDuration(sec int) int {
-	// Free AceMusic cloud often stalls on long tracks; keep requests short.
-	maxSec := 90
+	// Cloudflare in front of AceMusic free tier often 504s >~90–100s wall time.
+	maxSec := 60
 	if v := strings.TrimSpace(os.Getenv("ACEMUSIC_MAX_DURATION")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 15 && n <= 240 {
 			maxSec = n
@@ -557,6 +604,15 @@ func ParseAceMusicHTTPError(status int, body []byte) error {
 		}
 	case status == 429:
 		return &ProviderError{Code: "provider_rate_limit", Message: "AceMusic rate limit", Status: 429}
+	case status == 502 || status == 503 || status == 504 ||
+		strings.Contains(lower, "gateway time-out") ||
+		strings.Contains(lower, "gateway timeout") ||
+		strings.Contains(lower, "cloudflare"):
+		return &ProviderError{
+			Code:    "provider_timeout",
+			Message: "AceMusic перегружен (Cloudflare 504). Попробуйте длину 1 мин или провайдер «Авто» / AceData.",
+			Status:  504,
+		}
 	default:
 		return &ProviderError{
 			Code:    "provider_error",

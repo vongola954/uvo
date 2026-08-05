@@ -230,7 +230,8 @@ func (s *GenerationService) providerOrder(override string) []string {
 	case "acedata":
 		return filterConfigured([]string{"acedata"}, s)
 	case "acemusic":
-		return filterConfigured([]string{"acemusic"}, s)
+		// Prefer AceMusic; soft-fallback AceData when Cloudflare 504s free tier.
+		return filterConfigured([]string{"acemusic", "acedata"}, s)
 	default: // auto
 		return filterConfigured([]string{"acedata", "acemusic"}, s)
 	}
@@ -263,7 +264,10 @@ func shouldFallbackMusic(err error) bool {
 	}
 	if pe := clients.AsProviderError(err); pe != nil {
 		switch pe.Code {
-		case "provider_balance_empty", "provider_auth", "provider_rate_limit", "provider_timeout":
+		case "provider_balance_empty", "provider_auth", "provider_rate_limit", "provider_timeout", "provider_unavailable":
+			return true
+		}
+		if pe.Status == 502 || pe.Status == 503 || pe.Status == 504 {
 			return true
 		}
 	}
@@ -271,7 +275,12 @@ func shouldFallbackMusic(err error) bool {
 	return strings.Contains(msg, "used_up") ||
 		strings.Contains(msg, "not sufficient") ||
 		strings.Contains(msg, "invalid_token") ||
-		strings.Contains(msg, "timeout")
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "time-out") ||
+		strings.Contains(msg, "gateway") ||
+		strings.Contains(msg, "cloudflare") ||
+		strings.Contains(msg, "504") ||
+		strings.Contains(msg, "502")
 }
 
 func (s *GenerationService) getMediaRoot() string {
