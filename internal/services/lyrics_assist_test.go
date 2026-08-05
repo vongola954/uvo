@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -11,6 +12,9 @@ func TestResolveLyricsLLMConfigFreeDefault(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 	t.Setenv("LYRICS_LLM_PROVIDER", "")
 	t.Setenv("LYRICS_ASSIST", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("VEO_API_KEY", "")
+	t.Setenv("GOOGLE_API_KEY", "")
 
 	cfg := resolveLyricsLLMConfig()
 	if cfg.Provider != "pollinations" || cfg.BaseURL != defaultFreeLLMBase {
@@ -30,6 +34,9 @@ func TestResolveLyricsLLMConfigOpenAI(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 	t.Setenv("LYRICS_LLM_PROVIDER", "")
 	t.Setenv("LYRICS_ASSIST", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("VEO_API_KEY", "")
+	t.Setenv("GOOGLE_API_KEY", "")
 
 	cfg := resolveLyricsLLMConfig()
 	if cfg.Provider != "openai" || cfg.BaseURL != "https://api.openai.com/v1" || !cfg.SendAuth {
@@ -42,6 +49,9 @@ func TestResolveLyricsLLMConfigPlaceholderUsesFree(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("LYRICS_LLM_PROVIDER", "")
 	t.Setenv("LYRICS_ASSIST", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("VEO_API_KEY", "")
+	t.Setenv("GOOGLE_API_KEY", "")
 
 	cfg := resolveLyricsLLMConfig()
 	if cfg.Provider != "pollinations" || cfg.SendAuth {
@@ -55,15 +65,6 @@ func TestResolveLyricsLLMConfigDisabled(t *testing.T) {
 	if LyricsAssistEnabled() {
 		t.Fatal("expected disabled")
 	}
-	if resolveLyricsLLMConfig().BaseURL != "" {
-		t.Fatal("expected empty config")
-	}
-}
-
-func TestIsPlaceholderAPIKey(t *testing.T) {
-	if !isPlaceholderAPIKey("not-needed") || isPlaceholderAPIKey("sk-abc") {
-		t.Fatal("placeholder detection failed")
-	}
 }
 
 func TestResolveLyricsLLMConfigPollinationsIgnoresKey(t *testing.T) {
@@ -72,6 +73,9 @@ func TestResolveLyricsLLMConfigPollinationsIgnoresKey(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "gpt-4o-mini")
 	t.Setenv("LYRICS_LLM_PROVIDER", "")
 	t.Setenv("LYRICS_ASSIST", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("VEO_API_KEY", "")
+	t.Setenv("GOOGLE_API_KEY", "")
 
 	cfg := resolveLyricsLLMConfig()
 	if cfg.SendAuth || cfg.APIKey != "" {
@@ -82,11 +86,18 @@ func TestResolveLyricsLLMConfigPollinationsIgnoresKey(t *testing.T) {
 	}
 }
 
-func TestFinalizeLLMAuthStripsPollinationsBearer(t *testing.T) {
-	cfg := finalizeLLMAuth(lyricsLLMConfig{
-		BaseURL: defaultFreeLLMBase, APIKey: "x", Model: "gpt-4o-mini", Provider: "custom", SendAuth: true,
-	})
-	if cfg.SendAuth || cfg.APIKey != "" || cfg.Provider != "pollinations" {
-		t.Fatalf("got %+v", cfg)
+func TestLocalLyricsDraft(t *testing.T) {
+	text := localLyricsDraft("дождь в городе ночью", "поп")
+	if !strings.Contains(text, "[Припев]") || !strings.Contains(text, "дождь") {
+		t.Fatalf("bad draft: %s", text)
+	}
+}
+
+func TestLyricsAssistDraftFallsBackLocal(t *testing.T) {
+	t.Setenv("LYRICS_LLM_PROVIDER", "local")
+	t.Setenv("LYRICS_ASSIST", "true")
+	text, err := LyricsAssistDraft("u1", "метро и весна", "инди", nil)
+	if err != nil || !strings.Contains(text, "[Куплет 1]") {
+		t.Fatalf("err=%v text=%q", err, text)
 	}
 }

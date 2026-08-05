@@ -116,7 +116,7 @@ func main() {
 		Edit: editSvc, Search: searchSvc, MediaFX: mediaFX, Distribution: distSvc,
 		Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.10.3",
+		MaxOn: maxC.Enabled(), Version: "2.10.4",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -150,6 +150,6 @@ func main() {
 	if services.LyricsAssistEnabled() {
 		logrus.Info("lyrics assist enabled (Pollinations free / OpenAI-compatible)")
 	}
-	logrus.Infof("UVO 2.10.3 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
+	logrus.Infof("UVO 2.10.4 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }
