@@ -96,18 +96,36 @@
     setView(view, opts);
   }
 
+  /** MAX WebView often targets a Text node inside the button — no .closest there. */
+  function eventEl(e) {
+    let t = e && e.target;
+    if (!t) return null;
+    if (t.nodeType === 3) t = t.parentElement || t.parentNode;
+    while (t && t.nodeType !== 1) t = t.parentElement || t.parentNode;
+    return t || null;
+  }
+
+  function closestAttr(start, attr) {
+    let el = start;
+    while (el && el.nodeType === 1) {
+      if (el.getAttribute && el.getAttribute(attr) != null) return el;
+      el = el.parentElement || el.parentNode;
+    }
+    return null;
+  }
+
   function handleNavEvent(e) {
-    if (!e || !e.target) return;
-    const t = e.target;
-    if (typeof t.closest !== 'function') return;
-    const openEl = t.closest('[data-uvo-open]');
+    if (!e) return;
+    const t = eventEl(e);
+    if (!t) return;
+    const openEl = (typeof t.closest === 'function' ? t.closest('[data-uvo-open]') : null) || closestAttr(t, 'data-uvo-open');
     if (openEl) {
       e.preventDefault();
       e.stopPropagation();
       openTarget(openEl.getAttribute('data-uvo-open') || 'hub');
       return;
     }
-    const navEl = t.closest('[data-uvo-nav]');
+    const navEl = (typeof t.closest === 'function' ? t.closest('[data-uvo-nav]') : null) || closestAttr(t, 'data-uvo-nav');
     if (!navEl) return;
     const view = navEl.getAttribute('data-uvo-nav');
     if (!view) return;

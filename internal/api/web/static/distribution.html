@@ -39,7 +39,16 @@
 <script>
 (function () {
   function go(e) {
-    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    var t = e && e.target;
+    if (t && t.nodeType === 3) t = t.parentElement || t.parentNode;
+    var a = null;
+    if (t && t.closest) a = t.closest('a[href]');
+    else {
+      while (t && t.nodeType === 1) {
+        if (t.tagName === 'A' && t.getAttribute('href')) { a = t; break; }
+        t = t.parentElement || t.parentNode;
+      }
+    }
     if (!a) return;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '/' || href.indexOf('#') >= 0) return;

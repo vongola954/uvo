@@ -183,6 +183,7 @@
       gap: 2px; padding: 8px 4px; border-radius: 14px; font-size: 10px; font-weight: 600;
       color: #71717a; background: transparent; border: 0; text-decoration: none;
       -webkit-tap-highlight-color: transparent; cursor: pointer;
+      touch-action: manipulation; user-select: none;
     }
     .bottom-nav .uvo-nav-active { color: var(--accent); background: var(--accent-dim); }
     .bottom-nav .nav-ico { font-size: 16px; line-height: 1; }
@@ -618,15 +619,15 @@
     </footer>
 
     <nav class="bottom-nav" aria-label="Основная навигация">
-      <button type="button" data-uvo-nav="lyrics"><span class="nav-ico">✎</span>Стихи</button>
-      <button type="button" data-uvo-nav="create"><span class="nav-ico">♪</span>Создать</button>
-      <button type="button" data-uvo-nav="tracks"><span class="nav-ico">☰</span>Треки</button>
-      <button type="button" data-uvo-nav="balance"><span class="nav-ico">◇</span>Баланс</button>
+      <button type="button" data-uvo-nav="lyrics"><span class="nav-ico">✎</span><span>Стихи</span></button>
+      <button type="button" data-uvo-nav="create"><span class="nav-ico">♪</span><span>Создать</span></button>
+      <button type="button" data-uvo-nav="tracks"><span class="nav-ico">☰</span><span>Треки</span></button>
+      <button type="button" data-uvo-nav="balance"><span class="nav-ico">◇</span><span>Баланс</span></button>
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.10.10"></script>
-  <script src="/static/app-shell.js?v=2.10.10"></script>
+  <script src="/static/auth.js?v=2.10.11"></script>
+  <script src="/static/app-shell.js?v=2.10.11"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
