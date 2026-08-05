@@ -199,12 +199,12 @@ type CreditPack struct {
 }
 
 var CreditPacks = []CreditPack{
-	{ID: "pack5", Name: "Старт · 5 песен", Credits: 5, PriceRub: 99, Featured: true, Badge: "вход"},
-	{ID: "pack10", Name: "10 кредитов", Credits: 10, PriceRub: 199},
-	{ID: "pack30", Name: "30 кредитов", Credits: 30, PriceRub: 499},
-	{ID: "pack100", Name: "100 кредитов", Credits: 100, PriceRub: 699, Badge: "выгодно"},
-	{ID: "pack500", Name: "500 кредитов", Credits: 500, PriceRub: 1690},
-	{ID: "pack2000", Name: "2000 кредитов", Credits: 2000, PriceRub: 5990},
+	{ID: "pack5", Name: "Лёгкий старт", Credits: 5, PriceRub: 99, Featured: true, Badge: "ТОП"},
+	{ID: "pack10", Name: "Создай хит", Credits: 10, PriceRub: 199},
+	{ID: "pack30", Name: "Будь на уровне", Credits: 30, PriceRub: 499},
+	{ID: "pack100", Name: "Стань звездой", Credits: 100, PriceRub: 699, Badge: "выгодно"},
+	{ID: "pack500", Name: "Мастер", Credits: 500, PriceRub: 1690, Badge: "макс. выгода"},
+	{ID: "pack2000", Name: "Студия", Credits: 2000, PriceRub: 5990},
 }
 
 func init() {

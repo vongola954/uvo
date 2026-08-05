@@ -152,6 +152,29 @@
     @media (prefers-reduced-motion: reduce) {
       *, .progress-bar > div, .spinner, .bento { animation: none !important; transition: none !important; }
     }
+
+    body.uvo-miniapp .uvo-marketing { display: none !important; }
+    body.uvo-miniapp, body:not(.uvo-miniapp) { padding-bottom: 5.5rem; }
+    .bottom-nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 2px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+      background: rgba(5,5,7,0.92); border-top: 1px solid var(--border);
+      backdrop-filter: blur(18px);
+    }
+    .bottom-nav a, .bottom-nav button {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; padding: 8px 4px; border-radius: 14px; font-size: 10px; font-weight: 600;
+      color: #71717a; background: transparent; border: 0; text-decoration: none;
+    }
+    .bottom-nav .uvo-nav-active { color: var(--accent); background: var(--accent-dim); }
+    .bottom-nav .nav-ico { font-size: 16px; line-height: 1; }
+    .hub-card { text-align: left; width: 100%; transition: border-color .2s, transform .2s; }
+    .hub-card:hover { border-color: rgba(52,211,153,0.35); transform: translateY(-2px); }
+    .style-chip.is-on { border-color: rgba(52,211,153,0.5); color: #34d399; background: rgba(52,211,153,0.1); }
+    .dual-grid { display: grid; gap: 12px; }
+    @media (min-width: 640px) { .dual-grid.has-alt { grid-template-columns: 1fr 1fr; } }
+
   </style>
 </head>
 <body>
@@ -174,7 +197,7 @@
     </nav>
 
     <!-- Hero: kinetic + serif accent (editorial 2026) -->
-    <section class="pt-28 pb-16 px-5">
+    <section class="pt-28 pb-16 px-5 uvo-marketing">
       <div class="max-w-3xl mx-auto text-center">
         <div class="chip mb-6">
           <span class="pulse-dot"></span>
@@ -196,7 +219,7 @@
       </div>
     </section>
 
-    <section id="presets" class="px-5 pb-14">
+    <section id="presets" class="uvo-marketing px-5 pb-14">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold text-center mb-2">Виральные пресеты</h2>
         <p class="text-center text-sm text-zinc-500 mb-6">Готовые связки промпт + стиль — один тап</p>
@@ -204,7 +227,7 @@
       </div>
     </section>
 
-    <section id="showcase" class="px-5 pb-16">
+    <section id="showcase" class="uvo-marketing px-5 pb-16">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold text-center mb-2">Витрина</h2>
         <p class="text-center text-sm text-zinc-500 mb-6">Публичные треки сообщества — «создать похожее»</p>
@@ -213,8 +236,71 @@
       </div>
     </section>
 
+
+    <!-- App hub (Sonata-like menu, UVO design) -->
+    <section data-uvo-view="hub" class="px-5 pt-20 pb-8 hidden">
+      <div class="max-w-2xl mx-auto">
+        <div class="flex items-end justify-between mb-5">
+          <div>
+            <p class="chip mb-3"><span class="pulse-dot"></span> 2 песни в подарок · от 99 ₽</p>
+            <h1 class="text-3xl font-black tracking-tight">UVO<span style="color:var(--accent)">.</span></h1>
+            <p class="text-sm text-zinc-500 mt-1">Создай песню · своим голосом · минус · портрет</p>
+          </div>
+          <span id="credits-chip-hub" class="text-xs text-zinc-500"></span>
+        </div>
+        <button type="button" data-uvo-open="create" class="btn-primary w-full py-4 rounded-2xl font-bold mb-4">Создать песню бесплатно</button>
+        <div class="grid gap-2">
+          <button type="button" data-uvo-open="create" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Создать песню</div>
+            <p class="text-xs text-zinc-500">Идея · свой текст · instrumental. AceMusic / Suno.</p>
+          </button>
+          <button type="button" data-uvo-open="lyrics" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Создать стихи</div>
+            <p class="text-xs text-zinc-500">Черновик текста по идее — бесплатно, затем в песню.</p>
+          </button>
+          <button type="button" data-uvo-open="create:voice" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Песня твоим голосом</div>
+            <p class="text-xs text-zinc-500">Клон голоса → генерация и каверы.</p>
+          </button>
+          <button type="button" data-uvo-open="create:cover" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Кавер</div>
+            <p class="text-xs text-zinc-500">Любой трек своим клонированным голосом (−2).</p>
+          </button>
+          <button type="button" data-uvo-open="tracks" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Минусовка / портрет</div>
+            <p class="text-xs text-zinc-500">Стемы, караоке и singing portrait из ваших треков.</p>
+          </button>
+          <button type="button" data-uvo-open="balance" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Баланс и тарифы</div>
+            <p class="text-xs text-zinc-500">Пакеты от 99 ₽ · цена за песню как у рынка.</p>
+          </button>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="#showcase" class="btn-ghost text-xs px-3 py-2 rounded-xl uvo-marketing">Витрина</a>
+          <a href="/feed.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Лента</a>
+          <a href="/playlists.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Плейлисты</a>
+        </div>
+      </div>
+    </section>
+
+    <section data-uvo-view="lyrics" class="px-5 pt-20 pb-8 hidden">
+      <div class="max-w-2xl mx-auto glass p-6 sm:p-8">
+        <h2 class="text-xl font-bold mb-1">Создать стихи</h2>
+        <p class="text-sm text-zinc-500 mb-5">Опишите идею — получите черновик куплетов и припева. Текст можно править и сразу отправить в генерацию.</p>
+        <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Идея стихов</label>
+        <textarea id="lyrics-idea" rows="4" placeholder="Поздравление маме с днём рождения, тепло, благодарность, лёгкий поп"></textarea>
+        <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2 mt-4">Стиль (опц.)</label>
+        <input id="lyrics-style" type="text" placeholder="лирический поп, женский вокал">
+        <button type="button" id="btn-write-lyrics" class="btn-primary w-full py-3.5 rounded-2xl font-bold mt-4">Написать стихи</button>
+        <p id="lyrics-assist-status" class="text-xs text-zinc-500 mt-2"></p>
+        <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2 mt-5">Текст</label>
+        <textarea id="lyrics-draft" rows="10" placeholder="Здесь появится текст…"></textarea>
+        <button type="button" id="btn-lyrics-to-song" class="btn-ghost w-full py-3 rounded-2xl font-semibold mt-3">Использовать для песни →</button>
+      </div>
+    </section>
+
     <!-- Studio glass panel -->
-    <section id="generate" class="px-5 pb-20">
+    <section id="generate" data-uvo-view="create" class="px-5 pt-20 pb-8">
       <div class="max-w-2xl mx-auto glass p-7 sm:p-9">
         <div class="flex items-end justify-between mb-6">
           <div>
@@ -233,9 +319,9 @@
         <div id="panel-gen">
         <div id="preset-chips" class="flex flex-wrap gap-2 mb-4"></div>
         <div class="flex gap-2 mb-4 text-xs font-semibold" id="gen-modes">
-          <button type="button" data-mode="idea" class="gen-mode px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Идея</button>
+          <button type="button" data-mode="idea" class="gen-mode px-3 py-2 rounded-xl border border-emerald-500/50 text-emerald-400">Идея песни</button>
           <button type="button" data-mode="lyrics" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Свой текст</button>
-          <button type="button" data-mode="instrumental" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Instrumental</button>
+          <button type="button" data-mode="instrumental" class="gen-mode px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Инструментал</button>
         </div>
         <p id="mode-hint" class="text-xs text-zinc-500 mb-4">Опишите настроение и звук — Suno напишет трек. −1 кредит ≈ 1 песня.</p>
         <form id="gen-form" class="space-y-4">
@@ -279,9 +365,23 @@
             </div>
             <textarea id="lyrics" rows="3" placeholder="Опционально — или переключитесь в «Свой текст»"></textarea>
           </div>
-          <input type="hidden" id="instrumental" value="0">
+          
+          <div id="field-title" class="hidden">
+            <label class="block text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Название</label>
+            <input id="track-title-input" type="text" maxlength="80" placeholder="Название песни (опц.)">
+          </div>
+          <div id="idea-draft-wrap" class="flex items-center gap-3 text-xs text-zinc-400">
+            <input type="checkbox" id="idea-draft-first" class="rounded border-white/20">
+            <label for="idea-draft-first">Сначала черновик текста с правками</label>
+          </div>
+          <div id="style-chips-wrap" class="hidden">
+            <p class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-1">Стили</p>
+            <div id="style-chips"></div>
+            <input id="style-free" type="text" class="mt-3" placeholder="Свой стиль / теги (опц.)" maxlength="1000">
+          </div>
+<input type="hidden" id="instrumental" value="0">
           <button type="submit" id="btn-gen" class="btn-primary w-full py-4 rounded-2xl font-bold tracking-wide">
-            GENERATE · −1
+            Создать песню · 1 кредит
           </button>
         </form>
         </div>
@@ -337,21 +437,33 @@
         </div>
 
         <div id="result" class="mt-6 hidden">
-          <div class="player-card rounded-2xl p-5">
-            <p id="track-title" class="font-semibold text-emerald-400 mb-3 text-sm"></p>
-            <audio id="player" controls class="w-full"></audio>
-            <div class="flex flex-wrap gap-2 mt-4">
-              <a id="dl-link" href="#" class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать mp3</a>
-              <a id="stems-link" href="/tracks.html" class="btn-ghost text-xs px-4 py-2 rounded-xl">Минусовка (−2)</a>
-              <button type="button" id="btn-close-result" class="btn-ghost text-xs px-4 py-2 rounded-xl">Закрыть</button>
+          <p class="text-xs text-zinc-500 mb-2">Готово — сравните варианты и скачайте лучший</p>
+          <div id="dual-grid" class="dual-grid">
+            <div class="player-card rounded-2xl p-5">
+              <p class="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Вариант 1</p>
+              <p id="track-title" class="font-semibold text-emerald-400 mb-3 text-sm"></p>
+              <audio id="player" controls class="w-full"></audio>
+              <div class="flex flex-wrap gap-2 mt-4">
+                <a id="dl-link" href="#" class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать</a>
+                <a id="stems-link" href="/tracks.html" class="btn-ghost text-xs px-4 py-2 rounded-xl">Минус (−2)</a>
+              </div>
+            </div>
+            <div id="alt-card" class="player-card rounded-2xl p-5 hidden">
+              <p class="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Вариант 2</p>
+              <p id="alt-track-title" class="font-semibold text-emerald-400 mb-3 text-sm">Вариант 2</p>
+              <audio id="alt-player" controls class="w-full"></audio>
+              <div class="flex flex-wrap gap-2 mt-4">
+                <a id="alt-dl-link" href="#" class="btn-ghost text-xs px-4 py-2 rounded-xl">Скачать</a>
+              </div>
             </div>
           </div>
+          <button type="button" id="btn-close-result" class="btn-ghost text-xs px-4 py-2 rounded-xl mt-3">Закрыть</button>
         </div>
       </div>
     </section>
 
     <!-- Bento features -->
-    <section id="features" class="px-5 pb-20">
+    <section id="features" class="uvo-marketing px-5 pb-20">
       <div class="max-w-5xl mx-auto">
         <h2 class="text-2xl sm:text-3xl font-bold text-center mb-2">Всё в одной студии</h2>
         <p class="text-zinc-500 text-center text-sm mb-10">Минимализм с характером · glass · bento</p>
@@ -395,10 +507,10 @@
       </div>
     </section>
 
-    <section id="pricing" class="px-5 pb-20">
+    <section id="pricing" data-uvo-view="balance" class="px-5 pt-20 pb-8">
       <div class="max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold text-center mb-3">Кредиты</h2>
-        <p id="pricing-lead" class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">2 песни в подарок. 1 кредит = 1 песня. Входной пакет от 99 ₽. ЮKassa — когда ключи на сервере.</p>
+        <h2 class="text-2xl font-bold text-center mb-3">Баланс</h2>
+        <p id="pricing-lead" class="text-center text-sm text-zinc-500 mb-8 max-w-xl mx-auto">2 песни в подарок. 1 кредит = 1 песня. Пакеты от 99 ₽ — чем больше, тем дешевле трек.</p>
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" id="packs-grid"></div>
         <div class="mt-4 flex flex-wrap gap-2 justify-center">
           <button type="button" id="btn-demo-topup" class="btn-ghost px-4 py-2 rounded-xl text-sm hidden">Демо +10</button>
@@ -407,17 +519,25 @@
       </div>
     </section>
 
-    <footer class="border-t border-white/5 py-10 px-5 text-center text-xs text-zinc-600">
+    <footer class="uvo-marketing border-t border-white/5 py-10 px-5 text-center text-xs text-zinc-600">
       UVO · dark mode 2.0 · glass · bento · 2026
     </footer>
+
+    <nav class="bottom-nav" aria-label="Основная навигация">
+      <button type="button" data-uvo-nav="lyrics"><span class="nav-ico">✎</span>Стихи</button>
+      <button type="button" data-uvo-nav="create"><span class="nav-ico">♪</span>Создать</button>
+      <a href="/tracks.html" data-uvo-nav="tracks"><span class="nav-ico">☰</span>Треки</a>
+      <button type="button" data-uvo-nav="balance"><span class="nav-ico">◇</span>Баланс</button>
+    </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.8.6"></script>
+  <script src="/static/auth.js?v=2.9.0"></script>
+  <script src="/static/app-shell.js?v=2.9.0"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
     let genMode = 'idea';
-    function setGenMode(mode) {
+    window.setGenMode = function setGenMode(mode) {
       genMode = mode === 'lyrics' || mode === 'instrumental' ? mode : 'idea';
       const hidden = document.getElementById('gen-mode');
       if (hidden) hidden.value = genMode;
@@ -433,21 +553,35 @@
       const lyricsLab = document.getElementById('lyrics-label');
       const promptLab = document.getElementById('prompt-label');
       const fieldLyrics = document.getElementById('field-lyrics');
+      const chips = document.getElementById('style-chips-wrap');
+      const titleField = document.getElementById('field-title');
+      const draftWrap = document.getElementById('idea-draft-wrap');
       if (genMode === 'lyrics') {
-        if (hint) hint.textContent = 'Вставьте свои стихи — стиль и голос опционально. −1 кредит.';
-        if (lyricsLab) lyricsLab.textContent = 'Стихи (обязательно)';
-        if (promptLab) promptLab.textContent = 'Промпт / настроение (опц.)';
+        if (hint) hint.textContent = 'Вставьте свои стихи — теги стиля ниже. −1 кредит.';
+        if (lyricsLab) lyricsLab.textContent = 'Текст (обязательно)';
+        if (promptLab) promptLab.textContent = 'Описание / настроение (опц.)';
         if (fieldLyrics) fieldLyrics.classList.remove('hidden');
+        if (chips) chips.classList.remove('hidden');
+        if (titleField) titleField.classList.remove('hidden');
+        if (draftWrap) draftWrap.classList.add('hidden');
+        if (window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
       } else if (genMode === 'instrumental') {
-        if (hint) hint.textContent = 'Только минус без вокала. Нужен промпт или стиль. −1 кредит.';
+        if (hint) hint.textContent = 'Инструментал без вокала — описание или стили. −1 кредит.';
         if (lyricsLab) lyricsLab.textContent = 'Стихи';
-        if (promptLab) promptLab.textContent = 'Промпт / настроение';
+        if (promptLab) promptLab.textContent = 'Описание';
         if (fieldLyrics) fieldLyrics.classList.add('hidden');
+        if (chips) chips.classList.remove('hidden');
+        if (titleField) titleField.classList.remove('hidden');
+        if (draftWrap) draftWrap.classList.add('hidden');
+        if (window.UVOApp) UVOApp.mountStyleChips(document.getElementById('style-chips'));
       } else {
-        if (hint) hint.textContent = 'Опишите настроение и звук — Suno напишет трек. −1 кредит ≈ 1 песня.';
+        if (hint) hint.textContent = 'Опишите идею своими словами — нейросеть сочинит песню. −1 кредит.';
         if (lyricsLab) lyricsLab.textContent = 'Стихи (опц.)';
-        if (promptLab) promptLab.textContent = 'Промпт';
+        if (promptLab) promptLab.textContent = 'Идея песни';
         if (fieldLyrics) fieldLyrics.classList.remove('hidden');
+        if (chips) chips.classList.add('hidden');
+        if (titleField) titleField.classList.add('hidden');
+        if (draftWrap) draftWrap.classList.remove('hidden');
       }
     }
     document.querySelectorAll('.gen-mode').forEach((b) => {
@@ -498,7 +632,8 @@
         style.value = p.style;
       }
       if (lyrics && p.lyrics_hint) lyrics.value = p.lyrics_hint;
-      document.getElementById('generate')?.scrollIntoView({ behavior: 'smooth' });
+      if (window.UVOApp) UVOApp.setView('create');
+      else document.getElementById('generate')?.scrollIntoView({ behavior: 'smooth' });
     }
 
     function applyQueryPrefill() {
@@ -668,12 +803,52 @@
           badge ? UVO.el('p', { className: 'text-[10px] uppercase tracking-wider text-emerald-400 mb-1', text: badge }) : UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: ' ' }),
           UVO.el('p', { className: 'text-xs text-zinc-500 mb-1', text: p.name || p.id }),
           UVO.el('p', { className: 'text-3xl font-black mb-1', text: (p.price_rub || 0) + ' ₽' }),
-          UVO.el('p', { className: 'text-sm text-zinc-400 mb-1', text: (p.credits || 0) + ' песен' }),
-          UVO.el('p', { className: 'text-xs text-zinc-600 mb-6', text: per ? ('≈ ' + per + ' ₽ / песня') : '' }),
+          UVO.el('p', { className: 'text-sm text-zinc-400 mb-1', text: '+' + (p.credits || 0) + ' кредитов · ' + (p.credits || 0) + ' генераций' }),
+          UVO.el('p', { className: 'text-xs text-emerald-400/80 mb-6', text: per ? (per + ' ₽ за трек') : '' }),
           btn,
         ]));
       });
     }
+
+    document.getElementById('btn-write-lyrics')?.addEventListener('click', async () => {
+      const idea = document.getElementById('lyrics-idea')?.value || '';
+      const style = document.getElementById('lyrics-style')?.value || '';
+      const status = document.getElementById('lyrics-assist-status');
+      if (!idea.trim()) { alert('Опишите идею стихов'); return; }
+      const btn = document.getElementById('btn-write-lyrics');
+      btn.disabled = true;
+      if (status) status.textContent = 'Пишу черновик…';
+      try {
+        await UVO.ensureDevToken();
+        const res = await UVO.api('/api/lyrics/assist', { method: 'POST', body: JSON.stringify({ idea, style }) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((d.error && d.error.message) || 'Нужен OPENAI_API_KEY');
+        document.getElementById('lyrics-draft').value = d.lyrics || '';
+        if (status) status.textContent = 'Готово — отредактируйте и отправьте в песню';
+      } catch (e) {
+        if (status) status.textContent = e.message || 'Ошибка';
+        alert(e.message || 'Ошибка');
+      } finally { btn.disabled = false; }
+    });
+    document.getElementById('btn-lyrics-to-song')?.addEventListener('click', () => {
+      const text = document.getElementById('lyrics-draft')?.value || '';
+      const idea = document.getElementById('lyrics-idea')?.value || '';
+      const style = document.getElementById('lyrics-style')?.value || '';
+      if (!text.trim()) { alert('Сначала получите или вставьте текст'); return; }
+      if (window.UVOApp) UVOApp.setView('create', { mode: 'lyrics' });
+      setGenMode('lyrics');
+      const ly = document.getElementById('lyrics');
+      const pr = document.getElementById('prompt');
+      const st = document.getElementById('style');
+      if (ly) ly.value = text;
+      if (pr && idea) pr.value = idea;
+      if (st && style) {
+        let found = false;
+        for (const o of st.options) if (o.value === style) found = true;
+        if (!found) st.appendChild(UVO.el('option', { value: style, text: style }));
+        st.value = style;
+      }
+    });
 
     (async () => {
       applyQueryPrefill();
@@ -930,6 +1105,30 @@
       btn.innerHTML = '<span class="spinner"></span>Генерация...';
       const stopProgress = animateProgress();
 
+
+      if (document.getElementById('idea-draft-first')?.checked && (document.getElementById('gen-mode')?.value || genMode) === 'idea') {
+        const idea = document.getElementById('prompt')?.value || '';
+        if (!idea.trim()) { alert('Опишите идею'); btn.disabled = false; return; }
+        try {
+          await UVO.ensureDevToken();
+          const res = await UVO.api('/api/lyrics/assist', { method: 'POST', body: JSON.stringify({ idea, style: document.getElementById('style')?.value || '' }) });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error((d.error && d.error.message) || 'Нужен OPENAI_API_KEY для черновика');
+          document.getElementById('lyrics').value = d.lyrics || '';
+          setGenMode('lyrics');
+          document.getElementById('idea-draft-first').checked = false;
+          document.getElementById('status-text').textContent = 'Черновик готов — проверьте стихи и нажмите «Создать» ещё раз';
+          stopProgress(false);
+          btn.disabled = false;
+          return;
+        } catch (e) {
+          stopProgress(false);
+          document.getElementById('status-text').textContent = 'Ошибка: ' + e.message;
+          btn.disabled = false;
+          return;
+        }
+      }
+
       const mode = document.getElementById('gen-mode')?.value || genMode || 'idea';
       const provider = document.getElementById('music-provider')?.value || 'auto';
       const body = {
@@ -944,40 +1143,44 @@
         request_id: (crypto.randomUUID && crypto.randomUUID()) || ('r-' + Date.now() + '-' + Math.random().toString(16).slice(2)),
       };
 
-      function showResult(playUrl, title, duration, downloadUrl, trackId, altPlayUrl) {
+      function showResult(playUrl, title, duration, downloadUrl, trackId, altPlayUrl, altTrackId) {
         document.getElementById('player').src = playUrl;
-        let t = (title || 'Трек') + ' · ' + (duration || '?') + 's';
-        if (altPlayUrl) t += ' · есть v2';
+        const t = (title || 'Трек') + ' · ' + (duration || '?') + 's';
         document.getElementById('track-title').textContent = t;
         const dl = document.getElementById('dl-link');
-        const dlUrl = downloadUrl || ('/tracks/' + trackId + '/download');
+        const dlUrl = downloadUrl || (trackId ? ('/tracks/' + trackId + '/download') : playUrl);
         dl.href = dlUrl;
         dl.onclick = async (e) => {
           e.preventDefault();
-          try {
-            await UVO.downloadFile(dlUrl, 'uvo-track-' + (trackId || 'x') + '.mp3');
-          } catch (err) {
-            alert(err.message || 'Не удалось скачать');
-          }
+          try { await UVO.downloadFile(dlUrl, 'uvo-track-' + (trackId || 'x') + '.mp3'); }
+          catch (err) { alert(err.message || 'Не удалось скачать'); }
         };
         const stems = document.getElementById('stems-link');
         if (stems && trackId) stems.href = '/karaoke.html?id=' + trackId;
-        let alt = document.getElementById('alt-link');
-        if (altPlayUrl) {
-          if (!alt) {
-            alt = document.createElement('a');
-            alt.id = 'alt-link';
-            alt.className = 'btn-ghost text-xs px-4 py-2 rounded-xl';
-            alt.textContent = 'Вариант 2';
-            document.getElementById('dl-link')?.parentElement?.appendChild(alt);
+        const grid = document.getElementById('dual-grid');
+        const altCard = document.getElementById('alt-card');
+        const altPlayer = document.getElementById('alt-player');
+        const altDl = document.getElementById('alt-dl-link');
+        if (altPlayUrl && altCard && altPlayer) {
+          altCard.classList.remove('hidden');
+          if (grid) grid.classList.add('has-alt');
+          altPlayer.src = altPlayUrl;
+          document.getElementById('alt-track-title').textContent = (title || 'Трек') + ' · v2';
+          const altUrl = altTrackId ? ('/tracks/' + altTrackId + '/download') : altPlayUrl;
+          if (altDl) {
+            altDl.href = altUrl;
+            altDl.onclick = async (e) => {
+              e.preventDefault();
+              try { await UVO.downloadFile(altUrl, 'uvo-track-' + (altTrackId || 'alt') + '.mp3'); }
+              catch (err) { alert(err.message || 'Не удалось скачать'); }
+            };
           }
-          alt.href = altPlayUrl;
-          alt.classList.remove('hidden');
-          alt.onclick = (e) => { e.preventDefault(); document.getElementById('player').src = altPlayUrl; };
-        } else if (alt) {
-          alt.classList.add('hidden');
+        } else if (altCard) {
+          altCard.classList.add('hidden');
+          if (grid) grid.classList.remove('has-alt');
         }
         result.classList.remove('hidden');
+        if (window.UVOApp) UVOApp.setView('create', { scroll: false });
       }
 
       try {
@@ -1018,7 +1221,8 @@
                 job.duration || job.Duration,
                 job.download_url || job.DownloadURL,
                 job.track_id || job.TrackID,
-                job.alt_play_url || job.AltPlayURL
+                job.alt_play_url || job.AltPlayURL,
+                job.alt_track_id || job.AltTrackID
               );
               done = true;
             } else if (job.status === 'failed') {
@@ -1034,6 +1238,8 @@
           const d = await cr.json();
           const el = document.getElementById('credits-chip');
           if (el && cr.ok) el.textContent = 'кредиты: ' + d.balance;
+          const hub = document.getElementById('credits-chip-hub');
+          if (hub && cr.ok) hub.textContent = 'кредиты: ' + d.balance;
         } catch (_) {}
       } catch (err) {
         stopProgress(false);

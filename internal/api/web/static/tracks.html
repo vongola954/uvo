@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 <html lang="ru"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>UVO — Треки</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.8.6"></script>
-<style>body{background:#050507;color:#f4f4f5;font-family:system-ui}</style>
-</head><body class="p-6 max-w-2xl mx-auto">
-<a href="/" class="text-emerald-400 text-sm">← Студия</a>
-<h1 class="text-2xl font-bold mt-4 mb-6">Мои треки</h1>
+<script src="/static/auth.js?v=2.9.0"></script>
+<style>
+  :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
+  body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
+  .glass { background:rgba(18,18,22,.72); border:1px solid var(--border); backdrop-filter:blur(20px); border-radius:20px; }
+  .bottom-nav { position:fixed; left:0; right:0; bottom:0; z-index:60; display:grid; grid-template-columns:repeat(4,1fr);
+    gap:2px; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:rgba(5,5,7,.92); border-top:1px solid var(--border); backdrop-filter:blur(18px); }
+  .bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; border-radius:14px;
+    font-size:10px; font-weight:600; color:#71717a; text-decoration:none; }
+  .bottom-nav .uvo-nav-active { color:var(--accent); background:var(--accent-dim); }
+</style>
+</head><body class="p-5 max-w-2xl mx-auto">
+<a href="/?view=hub" class="text-emerald-400 text-sm">← Меню</a>
+<h1 class="text-2xl font-bold mt-4 mb-2">Мои треки</h1>
+<p class="text-xs text-zinc-500 mb-5">Плейлист · скачать · минус · портрет · в ленту</p>
 <div id="auth"></div>
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
 <div id="portrait-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -25,13 +36,18 @@
     <video id="portrait-preview" class="hidden w-full rounded-xl" controls></video>
   </div>
 </div>
+<nav class="bottom-nav" aria-label="Основная навигация">
+  <a href="/?view=lyrics"><span>✎</span>Стихи</a>
+  <a href="/?view=create"><span>♪</span>Создать</a>
+  <a href="/tracks.html" class="uvo-nav-active"><span>☰</span>Треки</a>
+  <a href="/?view=balance"><span>◇</span>Баланс</a>
+</nav>
 <script>
 UVO.mountAuthBar(document.getElementById('auth'));
 let portraitTrackId = null;
 async function setPublic(id, isPublic) {
   const res = await UVO.api('/api/tracks/' + id + '/visibility', {
-    method: 'PATCH',
-    body: JSON.stringify({ is_public: isPublic }),
+    method: 'PATCH', body: JSON.stringify({ is_public: isPublic }),
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
@@ -42,36 +58,26 @@ async function setPublic(id, isPublic) {
 async function shareFeed(id) {
   const caption = prompt('Подпись для ленты', '') || '';
   const res = await UVO.api('/api/feed', {
-    method: 'POST',
-    body: JSON.stringify({ track_id: Number(id), caption }),
+    method: 'POST', body: JSON.stringify({ track_id: Number(id), caption }),
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
     alert((d.error && d.error.message) || 'Ошибка');
     return;
   }
-  alert('В ленте (трек стал публичным)');
-  load();
+  alert('В ленте');
 }
 async function editTrack(id, title) {
-  const promptVal = prompt('Новый промпт (пусто = без смены)', '') || '';
-  const style = prompt('Новый стиль (пусто = без смены)', '') || '';
-  const lyrics = prompt('Новые стихи (пусто = без смены)', '') || '';
-  const body = {};
-  if (promptVal) body.prompt = promptVal;
-  if (style) body.style = style;
-  if (lyrics) body.lyrics = lyrics;
-  if (!Object.keys(body).length) { alert('Нечего менять'); return; }
+  const style = prompt('Новый стиль (пусто = без изменений)', '') || '';
+  const lyrics = prompt('Новые стихи (пусто = без изменений)', '') || '';
+  const promptText = prompt('Промпт правки', title || '') || '';
   const res = await UVO.api('/api/tracks/' + id + '/edit', {
-    method: 'POST', body: JSON.stringify(body),
+    method: 'POST',
+    body: JSON.stringify({ style, lyrics, prompt: promptText }),
   });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    alert((d.error && d.error.message) || 'Ошибка правки (−1 кредит)');
-    return;
-  }
-  alert('Трек обновлён (−1 кредит): ' + (title || id));
-  load();
+  if (!res.ok) { alert((d.error && d.error.message) || 'Ошибка'); return; }
+  alert('Готово'); load();
 }
 function openPortrait(id) {
   portraitTrackId = id;
@@ -84,25 +90,21 @@ document.getElementById('portrait-cancel').onclick = () => {
 };
 document.getElementById('portrait-go').onclick = async () => {
   const file = document.getElementById('portrait-file').files[0];
-  if (!file || !portraitTrackId) { alert('Выберите фото'); return; }
   const st = document.getElementById('portrait-status');
-  st.textContent = 'Генерация портрета… (может занять несколько минут)';
-  try {
-    await UVO.ensureDevToken();
-    const fd = new FormData();
-    fd.append('image', file);
-    const p = document.getElementById('portrait-prompt').value;
-    if (p) fd.append('prompt', p);
-    const res = await UVO.api('/api/tracks/' + portraitTrackId + '/portrait', { method: 'POST', body: fd });
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error((d.error && d.error.message) || res.status);
-    const pr = d.portrait || {};
-    st.textContent = (pr.note || pr.provider || 'ok') + ' · −' + (pr.cost || '?') + ' кр.';
+  if (!file || !portraitTrackId) { st.textContent = 'Нужно фото'; return; }
+  st.textContent = 'Создаём…';
+  const fd = new FormData();
+  fd.append('image', file);
+  const prompt = document.getElementById('portrait-prompt').value;
+  if (prompt) fd.append('prompt', prompt);
+  const res = await UVO.api('/api/tracks/' + portraitTrackId + '/portrait', { method: 'POST', body: fd });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { st.textContent = (d.error && d.error.message) || 'Ошибка'; return; }
+  const url = (d.portrait && (d.portrait.video_url || d.portrait.VideoURL)) || d.video_url;
+  st.textContent = d.note || 'Готово';
+  if (url) {
     const v = document.getElementById('portrait-preview');
-    v.src = pr.video_url;
-    v.classList.remove('hidden');
-  } catch (e) {
-    st.textContent = e.message;
+    v.src = url; v.classList.remove('hidden');
   }
 };
 async function load() {
@@ -112,15 +114,18 @@ async function load() {
     const res = await UVO.api('/api/tracks');
     const d = await res.json();
     if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
-    const tracks = d.tracks || [];
+    const list = d.tracks || [];
     el.textContent = '';
-    if (!tracks.length) { el.textContent = 'Пока пусто. Создай трек в студии.'; return; }
-    tracks.forEach(t => {
+    if (!list.length) {
+      el.innerHTML = '<div class="glass p-6 text-center text-zinc-500">Пока пусто. <a class="text-emerald-400" href="/?view=create">Создать песню →</a></div>';
+      return;
+    }
+    list.forEach((t) => {
       const title = t.Title || t.title || 'Трек';
       const dur = t.Duration || t.duration || '?';
       const id = t.ID || t.id;
       const pub = !!(t.IsPublic || t.is_public);
-      const card = UVO.el('div', { className: 'border border-white/10 rounded-xl p-4 space-y-2' }, [
+      const card = UVO.el('div', { className: 'glass p-4 space-y-2' }, [
         UVO.el('div', { className: 'font-medium text-white', text: title + ' · ' + dur + 's' }),
         UVO.el('div', { className: 'text-xs ' + (pub ? 'text-emerald-400' : 'text-zinc-500'), text: pub ? 'публичный' : 'приватный' }),
         UVO.el('audio', { className: 'w-full', controls: true, src: '/tracks/' + id + '/play' }),
@@ -137,7 +142,7 @@ async function load() {
       mk(pub ? 'Сделать приватным' : 'Сделать публичным', () => setPublic(id, !pub).catch(e => alert(e.message)));
       mk('В ленту', () => shareFeed(id));
       mk('Правка (−1)', () => editTrack(id, title));
-      mk('Минусовка / караоке (−2)', () => { location.href = '/karaoke.html?id=' + id; });
+      mk('Минусовка (−2)', () => { location.href = '/karaoke.html?id=' + id; });
       mk('Скачать mp3', () => {
         UVO.downloadFile('/tracks/' + id + '/download', 'uvo-track-' + id + '.mp3')
           .catch((e) => alert(e.message || 'Не удалось скачать'));

@@ -4,10 +4,15 @@
 <title>UVO — Плейлисты</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.7.9"></script>
-<style>body{background:#050507;color:#f4f4f5;font-family:system-ui}</style>
+<script src="/static/auth.js?v=2.9.0"></script>
+<style>
+body{background:#050507;color:#f4f4f5;font-family:system-ui;padding-bottom:5.5rem}
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:rgba(5,5,7,.92);border-top:1px solid rgba(255,255,255,.08)}
+.bottom-nav a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:14px;font-size:10px;font-weight:600;color:#71717a;text-decoration:none}
+.bottom-nav .on{color:#34d399;background:rgba(52,211,153,.15)}
+</style>
 </head><body class="p-6 max-w-2xl mx-auto">
-<a href="/" class="text-emerald-400 text-sm">← Студия</a>
+<a href="/?view=hub" class="text-emerald-400 text-sm">← Меню</a>
 <h1 class="text-2xl font-bold mt-4 mb-6">Плейлисты</h1>
 <div id="auth"></div>
 <form id="f" class="flex flex-wrap gap-2 mb-6 items-center">
@@ -81,4 +86,10 @@ document.getElementById('f').onsubmit = async e => {
   load();
 };
 </script>
+<nav class="bottom-nav" aria-label="Навигация">
+  <a href="/?view=lyrics"><span>✎</span>Стихи</a>
+  <a href="/?view=create"><span>♪</span>Создать</a>
+  <a href="/tracks.html"><span>☰</span>Треки</a>
+  <a href="/?view=balance"><span>◇</span>Баланс</a>
+</nav>
 </body></html>
