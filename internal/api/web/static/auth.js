@@ -208,6 +208,19 @@
     return res;
   }
 
+  async function ensureGuestAuth() {
+    const res = await fetch('/api/auth/guest', {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: '{}',
+    });
+    if (!res.ok) return '';
+    const data = await res.json().catch(() => ({}));
+    if (data.token) setToken(data.token);
+    return data.token || (data.session ? 'cookie' : '');
+  }
+
   async function ensureDevToken() {
     await ensureMaxWebAppAuth();
     const me = await fetch('/api/auth/me', { credentials: 'include', headers: authHeaders() });
@@ -215,7 +228,19 @@
       const data = await me.json();
       if (data.authenticated) return 'cookie';
     }
-    if (getToken()) return getToken();
+    if (getToken()) {
+      // Verify stored token still works
+      const me2 = await fetch('/api/auth/me', { credentials: 'include', headers: authHeaders() });
+      if (me2.ok) {
+        const d2 = await me2.json().catch(() => ({}));
+        if (d2.authenticated) return getToken();
+      }
+      setToken('');
+    }
+    // Unique guest session for demo/testing (CREDITS_UNLIMITED / DEMO_GUEST) — each user isolated
+    const guest = await ensureGuestAuth();
+    if (guest) return guest;
+    // Legacy shared demo_user (DEV_AUTH only)
     const res = await fetch('/api/auth/token', {
       method: 'POST',
       credentials: 'include',
@@ -260,25 +285,57 @@
 
   function mountAuthBar(parent) {
     if (!parent) return;
-    const bar = el('div', { className: 'flex items-center gap-2 text-xs text-zinc-500 mb-4' });
+    const bar = el('div', { className: 'flex items-center gap-2 text-xs text-zinc-500 mb-4 flex-wrap' });
     const status = el('span', { text: 'сессия: …' });
     status.id = 'uvo-auth-status';
-    sessionOK().then((ok) => {
-      if (ok) status.textContent = inMaxWebApp() ? 'сессия: MAX' : 'сессия: ok';
-      else status.textContent = 'сессия: нет — кнопка «Запуск» в MAX';
-    });
     const btn = el('button', {
       type: 'button',
       className: 'border border-white/15 rounded-lg px-2 py-1 hover:border-emerald-500 hover:text-emerald-400',
-      text: 'Demo token',
+      text: 'Демо-вход',
       onclick: async () => {
         try {
           const t = await ensureDevToken();
-          status.textContent = t ? 'сессия: ok (demo)' : 'DEV_AUTH выключен — «Запуск» в MAX';
+          if (t) {
+            status.textContent = inMaxWebApp() ? 'сессия: MAX' : 'сессия: демо';
+            try {
+              const cr = await api('/api/credits');
+              const cd = await cr.json().catch(() => ({}));
+              if (cr.ok && cd.balance != null) {
+                const chip = document.getElementById('credits-chip');
+                if (chip) chip.textContent = 'кредиты: ' + cd.balance;
+                const hub = document.getElementById('credits-chip-hub');
+                if (hub) hub.textContent = 'кредиты: ' + cd.balance;
+              }
+            } catch (_) {}
+          } else {
+            status.textContent = 'нет входа — «Запуск» в MAX';
+          }
         } catch (e) {
-          status.textContent = 'ошибка токена';
+          status.textContent = e.message || 'ошибка входа';
         }
       },
+    });
+    sessionOK().then(async (ok) => {
+      if (ok) {
+        status.textContent = inMaxWebApp() ? 'сессия: MAX' : 'сессия: ok';
+        return;
+      }
+      status.textContent = 'сессия: нет';
+      // Auto guest login in demo/unlimited mode so other testers are not stuck
+      try {
+        const h = await fetch('/health', { credentials: 'include' });
+        const hd = await h.json().catch(() => ({}));
+        if (hd.demo_guest || hd.credits_unlimited) {
+          const t = await ensureDevToken();
+          if (t) status.textContent = inMaxWebApp() ? 'сессия: MAX' : 'сессия: демо';
+          else status.textContent = 'сессия: нет — «Запуск» в MAX или Демо-вход';
+        } else {
+          status.textContent = 'сессия: нет — кнопка «Запуск» в MAX';
+          btn.classList.add('hidden');
+        }
+      } catch (_) {
+        status.textContent = 'сессия: нет — «Запуск» в MAX или Демо-вход';
+      }
     });
     bar.appendChild(status);
     bar.appendChild(btn);

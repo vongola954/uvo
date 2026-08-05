@@ -37,13 +37,21 @@ func (d *Deps) getCredits(c *gin.Context) {
 		hint = "Тест: CREDITS_UNLIMITED — списание и лимиты отключены."
 		note = "Режим тестирования: кредиты не списываются."
 	}
+	if uid == "" {
+		note = "Нужен вход: кнопка «Запуск» в MAX или «Демо-вход»."
+		if services.DemoGuestAuthEnabled() {
+			hint = "Демо доступно: нажмите «Демо-вход» — у каждого своя сессия."
+		}
+	}
 	c.JSON(200, gin.H{
 		"balance":           d.Credits.Balance(uid),
+		"authenticated":     uid != "",
 		"packs":             services.PacksPublic(),
 		"free_credits":      services.FreeCredits,
 		"credit_hint":       hint,
 		"dual_policy":       services.DualPolicyLabel(),
 		"demo_topup":        demo,
+		"demo_guest":        services.DemoGuestAuthEnabled(),
 		"payment":           pay,
 		"note":              note,
 		"credits_unlimited": services.CreditsUnlimited(),

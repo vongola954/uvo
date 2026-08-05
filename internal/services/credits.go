@@ -36,6 +36,20 @@ func CreditsUnlimited() bool {
 	}
 }
 
+// DemoGuestAuthEnabled allows unique per-browser guest sessions for testing
+// (CREDITS_UNLIMITED or DEMO_GUEST=true). Unlike DEV_AUTH/demo_user, each guest is isolated.
+func DemoGuestAuthEnabled() bool {
+	if CreditsUnlimited() {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEMO_GUEST"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *CreditService) ensure(userID string) (*models.CreditBalance, error) {
 	var row models.CreditBalance
 	err := c.db.Where(models.CreditBalance{UserID: userID}).
@@ -59,6 +73,9 @@ func (c *CreditService) ensureTx(tx *gorm.DB, userID string) (*models.CreditBala
 }
 
 func (c *CreditService) Balance(userID string) int {
+	if strings.TrimSpace(userID) == "" {
+		return 0
+	}
 	if CreditsUnlimited() {
 		return UnlimitedBalance
 	}

@@ -31,6 +31,12 @@ func TestCreditsUnlimitedBypass(t *testing.T) {
 	if c.Balance("u") != UnlimitedBalance {
 		t.Fatalf("balance %d", c.Balance("u"))
 	}
+	if c.Balance("") != 0 {
+		t.Fatal("anonymous must not see unlimited balance")
+	}
+	if !DemoGuestAuthEnabled() {
+		t.Fatal("guest demo should follow CREDITS_UNLIMITED")
+	}
 	if err := c.Spend("u", 100); err != nil {
 		t.Fatal(err)
 	}

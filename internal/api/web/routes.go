@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
@@ -89,6 +91,8 @@ func Register(r *gin.Engine, d *Deps) {
 			"lyrics_assist":      services.LyricsAssistEnabled(),
 			"prod_guards":        prodGuards,
 			"credits_unlimited":  services.CreditsUnlimited(),
+			"demo_guest":         services.DemoGuestAuthEnabled(),
+			"dev_auth":           os.Getenv("DEV_AUTH") == "true",
 			"media_upscale":      d.MediaFX != nil && d.MediaFX.EnabledUpscale(),
 			"media_animate":      d.MediaFX != nil && d.MediaFX.EnabledAnimate(),
 			"media_video":        d.MediaFX != nil && d.MediaFX.EnabledVideo(),
@@ -118,6 +122,7 @@ func Register(r *gin.Engine, d *Deps) {
 	})
 
 	r.POST("/api/auth/token", d.authToken)
+	r.POST("/api/auth/guest", d.authGuest)
 	r.POST("/api/auth/exchange", d.authExchange)
 	r.POST("/api/auth/max-webapp", d.authMaxWebApp)
 	r.POST("/api/auth/logout", d.authLogout)
@@ -199,6 +204,40 @@ func (d *Deps) authToken(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"token": tok, "user_id": req.UserID, "session": "cookie"})
+}
+
+// authGuest: unique per-browser demo session (not shared demo_user).
+// Enabled when CREDITS_UNLIMITED or DEMO_GUEST=true — so other testers can use the app.
+func (d *Deps) authGuest(c *gin.Context) {
+	if !services.DemoGuestAuthEnabled() {
+		middleware.AbortJSON(c, 403, "forbidden", "гостевой демо-вход выключен (CREDITS_UNLIMITED или DEMO_GUEST=true)")
+		return
+	}
+	uid := ""
+	if cookie, err := c.Cookie("uvo_guest"); err == nil {
+		cookie = strings.TrimSpace(cookie)
+		if strings.HasPrefix(cookie, "guest_") && len(cookie) >= 12 && len(cookie) <= 80 {
+			uid = cookie
+		}
+	}
+	if uid == "" {
+		uid = "guest_" + uuid.New().String()
+	}
+	secure := strings.HasPrefix(strings.ToLower(strings.TrimSpace(os.Getenv("WEB_PUBLIC_URL"))), "https://")
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("uvo_guest", uid, int((30*24*time.Hour).Seconds()), "/", "", secure, true)
+	if err := middleware.SetSessionCookie(c, d.Cfg.JWTSecret, uid); err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "session failed")
+		return
+	}
+	tok, err := middleware.IssueToken(d.Cfg.JWTSecret, uid, 7*24*time.Hour)
+	if err != nil {
+		middleware.AbortJSON(c, 500, "internal_error", "token failed")
+		return
+	}
+	// Ensure free / unlimited balance row exists for this guest.
+	_ = d.Credits.Balance(uid)
+	c.JSON(200, gin.H{"token": tok, "user_id": uid, "session": "cookie", "guest": true})
 }
 
 func (d *Deps) authExchange(c *gin.Context) {
