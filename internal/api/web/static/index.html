@@ -324,10 +324,10 @@
         </div>
         <div class="mt-4 flex flex-wrap gap-2">
           <a href="#showcase" class="btn-ghost text-xs px-3 py-2 rounded-xl uvo-marketing">Витрина</a>
-          <a href="/feed.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Лента</a>
-          <a href="/playlists.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Плейлисты</a>
-          <a href="/media.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Видео / фото</a>
-          <a href="/distribution.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Дистрибуция</a>
+          <button type="button" data-uvo-open="feed" class="btn-ghost text-xs px-3 py-2 rounded-xl">Лента</button>
+          <button type="button" data-uvo-open="playlists" class="btn-ghost text-xs px-3 py-2 rounded-xl">Плейлисты</button>
+          <button type="button" data-uvo-open="media" class="btn-ghost text-xs px-3 py-2 rounded-xl">Видео / фото</button>
+          <button type="button" data-uvo-open="distribution" class="btn-ghost text-xs px-3 py-2 rounded-xl">Дистрибуция</button>
         </div>
       </div>
     </section>
@@ -588,7 +588,7 @@
       </div>
     </section>
 
-    <section data-uvo-view="tracks" class="px-5 pt-20 pb-8 hidden" hidden>
+    <section data-uvo-view="tracks" class="px-5 pt-20 pb-8 hidden">
       <div class="max-w-2xl mx-auto">
         <div class="flex items-end justify-between mb-4">
           <div>
@@ -625,8 +625,8 @@
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.10.9"></script>
-  <script src="/static/app-shell.js?v=2.10.9"></script>
+  <script src="/static/auth.js?v=2.10.10"></script>
+  <script src="/static/app-shell.js?v=2.10.10"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 

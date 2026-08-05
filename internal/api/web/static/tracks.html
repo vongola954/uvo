@@ -5,7 +5,7 @@
 <title>UVO — Треки</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.10.8"></script>
+<script src="/static/auth.js?v=2.10.10"></script>
 <style>
   :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
   body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
@@ -40,19 +40,22 @@
 <nav class="bottom-nav" aria-label="Основная навигация">
   <a href="/?view=lyrics"><span>✎</span>Стихи</a>
   <a href="/?view=create"><span>♪</span>Создать</a>
-  <a href="/tracks.html" class="uvo-nav-active"><span>☰</span>Треки</a>
+  <a href="/?view=tracks" class="uvo-nav-active"><span>☰</span>Треки</a>
   <a href="/?view=balance"><span>◇</span>Баланс</a>
 </nav>
 <script>
 (function () {
-  document.addEventListener('click', function (e) {
+  function go(e) {
     var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-    if (!a || !location.hash) return;
+    if (!a) return;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '/' || href.indexOf('#') >= 0) return;
     e.preventDefault();
-    location.assign(href + location.hash);
-  }, false);
+    e.stopPropagation();
+    location.assign(href + (location.hash || ''));
+  }
+  document.addEventListener('click', go, true);
+  document.addEventListener('click', go, false);
 })();
 UVO.mountAuthBar(document.getElementById('auth'));
 let portraitTrackId = null;

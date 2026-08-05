@@ -10,6 +10,17 @@
     return Array.from((root || document).querySelectorAll(sel));
   }
 
+  function hasView(name) {
+    return VIEWS.indexOf(name) !== -1;
+  }
+
+  function setHiddenAttr(el, hide) {
+    try {
+      if (hide) el.setAttribute('hidden', '');
+      else el.removeAttribute('hidden');
+    } catch (_) {}
+  }
+
   /** Same-origin jump; keep #WebAppData so MAX session survives page changes. */
   function goLocal(path) {
     try {
@@ -18,30 +29,30 @@
       const next = u.pathname + u.search + u.hash;
       location.assign(next);
     } catch (_) {
-      location.href = path;
+      try { location.href = path; } catch (__) {}
     }
   }
 
   function setView(name, opts) {
-    const view = VIEWS.includes(name) ? name : 'hub';
-    document.body.setAttribute('data-uvo-view', view);
+    const view = hasView(name) ? name : 'hub';
+    try { document.body.setAttribute('data-uvo-view', view); } catch (_) {}
     qsa('[data-uvo-view]').forEach((el) => {
       const on = el.getAttribute('data-uvo-view') === view;
-      el.classList.toggle('hidden', !on);
-      el.toggleAttribute('hidden', !on);
-      el.setAttribute('aria-hidden', on ? 'false' : 'true');
+      try { el.classList.toggle('hidden', !on); } catch (_) {}
+      setHiddenAttr(el, !on);
+      try { el.setAttribute('aria-hidden', on ? 'false' : 'true'); } catch (_) {}
+      // Inline !important — beats stylesheet fights in MAX WebView
+      try { el.style.setProperty('display', on ? 'block' : 'none', 'important'); } catch (_) {
+        try { el.style.display = on ? 'block' : 'none'; } catch (__) {}
+      }
     });
     qsa('[data-uvo-nav]').forEach((el) => {
       const on = el.getAttribute('data-uvo-nav') === view;
-      el.classList.toggle('uvo-nav-active', on);
-      el.setAttribute('aria-current', on ? 'page' : 'false');
+      try { el.classList.toggle('uvo-nav-active', on); } catch (_) {}
+      try { el.setAttribute('aria-current', on ? 'page' : 'false'); } catch (_) {}
     });
-    if (opts && opts.scroll !== false) {
-      try {
-        window.scrollTo({ top: 0, behavior: opts.smooth === false ? 'auto' : 'smooth' });
-      } catch (_) {
-        window.scrollTo(0, 0);
-      }
+    if (!opts || opts.scroll !== false) {
+      try { window.scrollTo(0, 0); } catch (_) {}
     }
     try {
       const u = new URL(location.href);
@@ -85,35 +96,51 @@
     setView(view, opts);
   }
 
+  function handleNavEvent(e) {
+    if (!e || !e.target) return;
+    const t = e.target;
+    if (typeof t.closest !== 'function') return;
+    const openEl = t.closest('[data-uvo-open]');
+    if (openEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      openTarget(openEl.getAttribute('data-uvo-open') || 'hub');
+      return;
+    }
+    const navEl = t.closest('[data-uvo-nav]');
+    if (!navEl) return;
+    const view = navEl.getAttribute('data-uvo-nav');
+    if (!view) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openTarget(view);
+  }
+
   function bindNav() {
     if (document.documentElement.getAttribute('data-uvo-nav-bound') === '1') return;
     document.documentElement.setAttribute('data-uvo-nav-bound', '1');
-    document.addEventListener('click', (e) => {
-      const openEl = e.target && e.target.closest ? e.target.closest('[data-uvo-open]') : null;
-      if (openEl) {
-        e.preventDefault();
-        e.stopPropagation();
-        openTarget(openEl.getAttribute('data-uvo-open') || 'hub');
-        return;
-      }
-      const navEl = e.target && e.target.closest ? e.target.closest('[data-uvo-nav]') : null;
-      if (!navEl) return;
-      const view = navEl.getAttribute('data-uvo-nav');
-      if (!view) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openTarget(view);
-    }, false);
+    // Capture phase: MAX WebView / bridge often swallows bubble-phase clicks
+    document.addEventListener('click', handleNavEvent, true);
+    document.addEventListener('click', handleNavEvent, false);
+    // Direct bindings as belt-and-suspenders
+    qsa('[data-uvo-nav], [data-uvo-open]').forEach((el) => {
+      el.addEventListener('click', handleNavEvent, false);
+    });
   }
 
   function detectMiniApp() {
-    const inMax = !!(global.UVO && global.UVO.inMaxWebApp && global.UVO.inMaxWebApp());
-    const q = location.search || '';
-    let bridge = false;
     try {
-      bridge = !!(global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe));
+      if (global.UVO && typeof global.UVO.inMaxWebApp === 'function' && global.UVO.inMaxWebApp()) return true;
     } catch (_) {}
-    return inMax || bridge || q.indexOf('app=1') >= 0 || q.indexOf('tgWebApp') >= 0;
+    const q = location.search || '';
+    try {
+      if (global.WebApp && (global.WebApp.initData || global.WebApp.initDataUnsafe)) return true;
+    } catch (_) {}
+    try {
+      const h = location.hash || '';
+      if (h.indexOf('WebAppData') >= 0 || h.indexOf('webAppData') >= 0) return true;
+    } catch (_) {}
+    return q.indexOf('app=1') >= 0 || q.indexOf('tgWebApp') >= 0;
   }
 
   function applyMiniAppLayout() {
@@ -124,7 +151,7 @@
     try {
       const u = new URL(location.href);
       const v = u.searchParams.get('view');
-      if (v && VIEWS.includes(v)) {
+      if (v && hasView(v)) {
         setView(v, { scroll: false, smooth: false });
         return;
       }
@@ -160,8 +187,8 @@
     if (input.tagName === 'SELECT') {
       const val = parts.join(', ');
       let found = false;
-      for (const o of input.options) {
-        if (o.value === val) { found = true; break; }
+      for (let i = 0; i < input.options.length; i++) {
+        if (input.options[i].value === val) { found = true; break; }
       }
       if (!found && val) input.appendChild(new Option(val, val));
       input.value = val;
@@ -212,14 +239,20 @@
       const before = document.body.classList.contains('uvo-miniapp');
       applyMiniAppLayout();
       const after = document.body.classList.contains('uvo-miniapp');
-      if (after && !before && !new URL(location.href).searchParams.get('view')) {
-        setView('hub', { scroll: false, smooth: false });
+      if (after && !before) {
+        try {
+          if (!new URL(location.href).searchParams.get('view')) {
+            setView('hub', { scroll: false, smooth: false });
+          }
+        } catch (_) {
+          setView('hub', { scroll: false, smooth: false });
+        }
       }
-      if (n >= 20 || after) clearInterval(t);
+      if (n >= 25) clearInterval(t);
     }, 200);
   }
 
-  global.UVOApp = { setView, init, mountStyleChips, syncStyleField, STYLE_GROUPS, goLocal };
+  global.UVOApp = { setView, init, mountStyleChips, syncStyleField, STYLE_GROUPS, goLocal, openTarget };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })(window);
