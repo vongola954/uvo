@@ -81,6 +81,7 @@ func (b *Bot) StartPolling() {
 	}
 	logrus.WithFields(logrus.Fields{"web": b.webURL, "mode": "polling"}).Info("MAX long-poll + studio CTA")
 
+	backoff := 3 * time.Second
 	for {
 		select {
 		case <-b.stop:
@@ -89,10 +90,18 @@ func (b *Bot) StartPolling() {
 		}
 		resp, err := b.max.GetUpdates(b.marker, 30)
 		if err != nil {
-			logrus.WithError(err).Warn("MAX poll error")
-			time.Sleep(3 * time.Second)
+			// Include err in message — Amvera often drops structured fields.
+			logrus.Warnf("MAX poll error: %v", err)
+			time.Sleep(backoff)
+			if backoff < 60*time.Second {
+				backoff *= 2
+				if backoff > 60*time.Second {
+					backoff = 60 * time.Second
+				}
+			}
 			continue
 		}
+		backoff = 3 * time.Second
 		if resp.Marker != nil {
 			b.marker = resp.Marker
 		}

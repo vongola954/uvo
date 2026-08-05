@@ -27,11 +27,14 @@ func jobsTestDB(t *testing.T) *gorm.DB {
 
 func TestCreateOrClaimIdempotent(t *testing.T) {
 	s := NewJobStore(jobsTestDB(t))
-	j1, created1 := s.CreateOrClaim("u1", "req-a")
-	if !created1 || j1 == nil {
-		t.Fatal("first create should win")
+	j1, created1, err := s.CreateOrClaim("u1", "req-a")
+	if err != nil || !created1 || j1 == nil {
+		t.Fatalf("first create should win: err=%v", err)
 	}
-	j2, created2 := s.CreateOrClaim("u1", "req-a")
+	j2, created2, err := s.CreateOrClaim("u1", "req-a")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if created2 {
 		t.Fatal("second create must not own the job")
 	}
@@ -49,7 +52,10 @@ func TestCreateOrClaimConcurrentOneWinner(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			j, created := s.CreateOrClaim("u1", "same-req")
+			j, created, err := s.CreateOrClaim("u1", "same-req")
+			if err != nil || j == nil {
+				return
+			}
 			if created {
 				atomic.AddInt32(&winners, 1)
 			}
@@ -73,7 +79,10 @@ func TestCreateOrClaimConcurrentOneWinner(t *testing.T) {
 
 func TestClaimProcessingCAS(t *testing.T) {
 	s := NewJobStore(jobsTestDB(t))
-	j, _ := s.CreateOrClaim("u1", "cas")
+	j, _, err := s.CreateOrClaim("u1", "cas")
+	if err != nil || j == nil {
+		t.Fatal(err)
+	}
 	var claimed int32
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -97,18 +106,18 @@ func TestClaimProcessingCAS(t *testing.T) {
 
 func TestDeletePendingAfterSpendFail(t *testing.T) {
 	s := NewJobStore(jobsTestDB(t))
-	j, created := s.CreateOrClaim("u1", "del")
-	if !created {
-		t.Fatal("expected create")
+	j, created, err := s.CreateOrClaim("u1", "del")
+	if err != nil || !created {
+		t.Fatalf("expected create: err=%v", err)
 	}
 	s.Delete(j.ID)
 	if _, ok := s.Get(j.ID); ok {
 		t.Fatal("expected deleted")
 	}
 	// retry can create again
-	j2, created2 := s.CreateOrClaim("u1", "del")
-	if !created2 {
-		t.Fatal("expected recreate after delete")
+	j2, created2, err := s.CreateOrClaim("u1", "del")
+	if err != nil || !created2 {
+		t.Fatalf("expected recreate after delete: err=%v", err)
 	}
 	if j2.ID == j.ID {
 		t.Fatal("expected new id")
@@ -117,7 +126,10 @@ func TestDeletePendingAfterSpendFail(t *testing.T) {
 
 func TestCompleteDoneRejectedAfterFailRefund(t *testing.T) {
 	s := NewJobStore(jobsTestDB(t))
-	j, _ := s.CreateOrClaim("u1", "done-race")
+	j, _, err := s.CreateOrClaim("u1", "done-race")
+	if err != nil || j == nil {
+		t.Fatal(err)
+	}
 	if !s.ClaimProcessing(j.ID) {
 		t.Fatal("claim")
 	}
@@ -142,7 +154,10 @@ func TestFailStaleAndRefund(t *testing.T) {
 	credits := NewCreditService(db)
 	uid := "stale-u"
 	_ = credits.Spend(uid, 1) // leave FreeCredits-1
-	j, _ := s.CreateOrClaim(uid, "stale-1")
+	j, _, err := s.CreateOrClaim(uid, "stale-1")
+	if err != nil || j == nil {
+		t.Fatal(err)
+	}
 	s.SetCreditsSpent(j.ID, 1)
 	// backdate updated_at
 	past := time.Now().Add(-20 * time.Minute)
@@ -166,5 +181,37 @@ func TestFailStaleAndRefund(t *testing.T) {
 	}
 	if credits.Balance(uid) != FreeCredits {
 		t.Fatal("balance changed on second pass")
+	}
+}
+
+func TestFailAbsoluteMaxAgeDespiteHeartbeat(t *testing.T) {
+	db := jobsTestDB(t)
+	if err := db.AutoMigrate(&models.CreditBalance{}); err != nil {
+		t.Fatal(err)
+	}
+	s := NewJobStore(db)
+	credits := NewCreditService(db)
+	uid := "abs-u"
+	_ = credits.Spend(uid, 1)
+	j, _, err := s.CreateOrClaim(uid, "abs-1")
+	if err != nil || j == nil {
+		t.Fatal(err)
+	}
+	s.SetCreditsSpent(j.ID, 1)
+	if !s.ClaimProcessing(j.ID) {
+		t.Fatal("claim")
+	}
+	// Fresh heartbeat, but created_at beyond AbsoluteMaxJobAge.
+	old := time.Now().Add(-AbsoluteMaxJobAge - time.Minute)
+	_ = db.Model(&models.JobRecord{}).Where("id = ?", j.ID).
+		Updates(map[string]interface{}{"created_at": old, "updated_at": time.Now()}).Error
+
+	n := s.FailStaleAndRefund(15*time.Minute, credits)
+	if n != 1 {
+		t.Fatalf("want absolute-max refund, got %d", n)
+	}
+	got, ok := s.Get(j.ID)
+	if !ok || got.Status != JobFailed || !got.Refunded {
+		t.Fatalf("job=%+v", got)
 	}
 }

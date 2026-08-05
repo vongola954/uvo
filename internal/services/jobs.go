@@ -33,11 +33,11 @@ func idemKey(userID, requestID, jobID string) string {
 // CreateOrClaim inserts a pending job. created=true only for the winning insert —
 // callers must Spend/start worker only when created. Concurrent same request_id
 // returns the existing row with created=false (no double spend).
-func (s *JobStore) CreateOrClaim(userID, requestID string) (job *models.JobRecord, created bool) {
+func (s *JobStore) CreateOrClaim(userID, requestID string) (job *models.JobRecord, created bool, err error) {
 	if requestID != "" {
 		var existing models.JobRecord
 		if err := s.db.Where("idem_key = ?", idemKey(userID, requestID, "")).First(&existing).Error; err == nil {
-			return &existing, false
+			return &existing, false, nil
 		}
 	}
 	id := uuid.New().String()
@@ -54,18 +54,18 @@ func (s *JobStore) CreateOrClaim(userID, requestID string) (job *models.JobRecor
 		if requestID != "" {
 			var existing models.JobRecord
 			if s.db.Where("idem_key = ?", j.IdemKey).First(&existing).Error == nil {
-				return &existing, false
+				return &existing, false, nil
 			}
 		}
-		// Create failed without recoverable idem row — do not treat as owned.
-		return j, false
+		// Create failed without recoverable idem row — never return a phantom job.
+		return nil, false, err
 	}
-	return j, true
+	return j, true, nil
 }
 
 // Create is CreateOrClaim discarding the created flag (legacy).
 func (s *JobStore) Create(userID, requestID string) *models.JobRecord {
-	j, _ := s.CreateOrClaim(userID, requestID)
+	j, _, _ := s.CreateOrClaim(userID, requestID)
 	return j
 }
 
@@ -169,13 +169,18 @@ func (s *JobStore) CompleteDone(id string, fields map[string]interface{}) bool {
 }
 
 // Touch bumps updated_at on a processing job (heartbeat against stale sweeper).
+// Jobs older than AbsoluteMaxJobAge stop receiving heartbeats so they can be swept.
 func (s *JobStore) Touch(id string) {
+	cut := time.Now().Add(-AbsoluteMaxJobAge)
 	_ = s.db.Model(&models.JobRecord{}).
-		Where("id = ? AND status = ?", id, JobProcessing).
+		Where("id = ? AND status = ? AND created_at > ?", id, JobProcessing, cut).
 		Update("updated_at", time.Now()).Error
 }
 
 const DefaultStaleProcessingAge = 45 * time.Minute
+
+// AbsoluteMaxJobAge caps how long heartbeats can keep a job alive.
+const AbsoluteMaxJobAge = 2 * time.Hour
 
 // FailStaleAndRefund fails stale pending/processing jobs and refunds CreditsSpent.
 // Pending uses `age` (default 15m). Processing uses a longer window so AceMusic jobs
@@ -190,6 +195,7 @@ func (s *JobStore) FailStaleAndRefund(age time.Duration, credits *CreditService)
 	n := 0
 	n += s.failStaleStatus(JobPending, age, credits)
 	n += s.failStaleStatus(JobProcessing, DefaultStaleProcessingAge, credits)
+	n += s.failAbsoluteMaxAge(credits)
 	return n
 }
 
@@ -202,7 +208,7 @@ func (s *JobStore) failStaleStatus(status string, age time.Duration, credits *Cr
 	}
 	n := 0
 	for _, j := range list {
-		if !s.TryMarkFailedRefunded(j.ID, "timeout: генерация не завершилась вовремя, кредиты возвращены") {
+		if !s.tryMarkFailedRefundedBefore(j.ID, "timeout: генерация не завершилась вовремя, кредиты возвращены", cut) {
 			continue
 		}
 		spent := j.CreditsSpent
@@ -213,4 +219,41 @@ func (s *JobStore) failStaleStatus(status string, age time.Duration, credits *Cr
 		n++
 	}
 	return n
+}
+
+func (s *JobStore) failAbsoluteMaxAge(credits *CreditService) int {
+	cut := time.Now().Add(-AbsoluteMaxJobAge)
+	var list []models.JobRecord
+	if err := s.db.Where("status IN ? AND created_at < ? AND refunded = ?",
+		[]string{JobPending, JobProcessing}, cut, false).Find(&list).Error; err != nil {
+		return 0
+	}
+	n := 0
+	for _, j := range list {
+		if !s.TryMarkFailedRefunded(j.ID, "timeout: превышен абсолютный лимит генерации, кредиты возвращены") {
+			continue
+		}
+		spent := j.CreditsSpent
+		if spent <= 0 {
+			spent = 1
+		}
+		credits.Refund(j.UserID, spent)
+		n++
+	}
+	return n
+}
+
+// tryMarkFailedRefundedBefore CAS-fails only if updated_at is still before cut
+// (avoids racing a live heartbeat Touch).
+func (s *JobStore) tryMarkFailedRefundedBefore(id, errMsg string, cut time.Time) bool {
+	res := s.db.Model(&models.JobRecord{}).
+		Where("id = ? AND status IN ? AND refunded = ? AND updated_at < ?",
+			id, []string{JobPending, JobProcessing}, false, cut).
+		Updates(map[string]interface{}{
+			"status":     JobFailed,
+			"error":      errMsg,
+			"refunded":   true,
+			"updated_at": time.Now(),
+		})
+	return res.Error == nil && res.RowsAffected == 1
 }

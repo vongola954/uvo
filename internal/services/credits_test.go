@@ -34,6 +34,7 @@ func TestCreditsUnlimitedBypass(t *testing.T) {
 	if err := c.Spend("u", 100); err != nil {
 		t.Fatal(err)
 	}
+	c.Refund("u", 50) // must not inflate DB balance while unlimited
 	rl := NewRateLimiter(db)
 	if err := rl.Allow("u"); err != nil {
 		t.Fatal(err)

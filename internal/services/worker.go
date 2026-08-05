@@ -22,6 +22,20 @@ func (p *WorkerPool) Do(fn func()) {
 	}()
 }
 
+// TryDo starts fn if a worker slot is free; returns false without blocking.
+func (p *WorkerPool) TryDo(fn func()) bool {
+	select {
+	case p.sem <- struct{}{}:
+		go func() {
+			defer func() { <-p.sem }()
+			fn()
+		}()
+		return true
+	default:
+		return false
+	}
+}
+
 // Wait for tests
 func (p *WorkerPool) ActiveApprox() int {
 	return len(p.sem)
@@ -36,4 +50,9 @@ func SetMaxWorkers(n int) {
 
 func GoLimited(fn func()) {
 	globalPool.Do(fn)
+}
+
+// TryGoLimited starts work only if a slot is free (non-blocking).
+func TryGoLimited(fn func()) bool {
+	return globalPool.TryDo(fn)
 }

@@ -109,7 +109,11 @@ func (d *Deps) Generate(c *gin.Context) {
 	}
 
 	// Async: claim job first, then spend — only the create winner pays / starts worker.
-	job, created := d.Jobs.CreateOrClaim(uid, req.RequestID)
+	job, created, err := d.Jobs.CreateOrClaim(uid, req.RequestID)
+	if err != nil {
+		middleware.AbortJSON(c, 503, "job_store_error", "не удалось создать задачу генерации")
+		return
+	}
 	if !created {
 		c.JSON(http.StatusAccepted, gin.H{
 			"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "idempotent": true,
@@ -130,8 +134,8 @@ func (d *Deps) Generate(c *gin.Context) {
 		return
 	}
 
-	services.GoLimited(func() {
-		jobID, userID := job.ID, uid
+	jobID, userID := job.ID, uid
+	started := services.TryGoLimited(func() {
 		secret := ""
 		if d.Cfg != nil {
 			secret = d.Cfg.JWTSecret
@@ -184,11 +188,22 @@ func (d *Deps) Generate(c *gin.Context) {
 			fields["alt_play_url"] = fmt.Sprintf("/tracks/%d/play", tracks[1].ID)
 		}
 		if !d.Jobs.CompleteDone(jobID, fields) {
-			logrus.WithField("job_id", jobID).Warn("generate finished after timeout/refund — not marking done")
+			logrus.WithField("job_id", jobID).Warn("generate finished after timeout/refund — orphan cleanup")
+			for _, tr := range tracks {
+				if tr != nil && d.Tracks != nil {
+					_ = d.Tracks.Delete(tr.ID)
+				}
+			}
 			return
 		}
 		middleware.IncGenOK()
 	})
+	if !started {
+		d.Credits.Refund(uid, 1)
+		d.Jobs.Delete(job.ID)
+		middleware.AbortJSON(c, 503, "workers_busy", "сервер занят, повторите через несколько секунд")
+		return
+	}
 
 	c.JSON(202, gin.H{"job_id": job.ID, "status": job.Status, "poll_url": "/api/jobs/" + job.ID, "mode": mode})
 }

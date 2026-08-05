@@ -119,7 +119,11 @@ func (c *CreditService) AddTx(tx *gorm.DB, userID string, n int) error {
 }
 
 // Refund returns credits after failed provider call (best-effort).
+// No-op when CREDITS_UNLIMITED — mirrors Spend so balances are not inflated.
 func (c *CreditService) Refund(userID string, n int) {
+	if CreditsUnlimited() {
+		return
+	}
 	_ = c.Add(userID, n)
 }
 

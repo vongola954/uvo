@@ -23,6 +23,11 @@ func (r *TrackRepository) Create(track *models.Track) error {
 	return r.db.Create(track).Error
 }
 
+// Delete removes a track row (orphan cleanup after late/refunded jobs).
+func (r *TrackRepository) Delete(id uint) error {
+	return r.db.Delete(&models.Track{}, id).Error
+}
+
 func (r *TrackRepository) GetByID(id uint) (*models.Track, error) {
 	var track models.Track
 	err := r.db.First(&track, id).Error
