@@ -197,16 +197,19 @@ type MAXUpdate struct {
 	UpdateType string      `json:"update_type"`
 	Timestamp  int64       `json:"timestamp"`
 	ChatID     int64       `json:"chat_id"`
+	UserID     int64       `json:"user_id"` // top-level on bot_started (2026 payloads)
 	User       *MAXUser    `json:"user"`
 	Message    *MAXMessage `json:"message"`
+	Payload    string      `json:"payload"`
 }
 
 type MAXUser struct {
-	UserID   int64  `json:"user_id"`
-	ID       int64  `json:"id"` // some payloads use id
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	IsBot    bool   `json:"is_bot"`
+	UserID    int64  `json:"user_id"`
+	ID        int64  `json:"id"` // some payloads use id
+	Name      string `json:"name"`
+	FirstName string `json:"first_name"`
+	Username  string `json:"username"`
+	IsBot     bool   `json:"is_bot"`
 }
 
 func (u *MAXUser) ID64() int64 {
@@ -288,4 +291,69 @@ func (m *MAXClient) Me() (map[string]interface{}, error) {
 		m.SetUsername(u)
 	}
 	return out, nil
+}
+
+// Username returns bot @username used for open_app (without @).
+func (m *MAXClient) Username() string { return m.username }
+
+type MAXSubscription struct {
+	URL         string   `json:"url"`
+	UpdateTypes []string `json:"update_types"`
+}
+
+// ListSubscriptions returns active webhook subscriptions.
+func (m *MAXClient) ListSubscriptions() ([]MAXSubscription, error) {
+	if m.token == "" {
+		return nil, fmt.Errorf("MAX token not configured")
+	}
+	req, err := http.NewRequest("GET", m.baseURL+"/subscriptions", nil)
+	if err != nil {
+		return nil, err
+	}
+	m.auth(req)
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("max subscriptions %d: %s", resp.StatusCode, string(b))
+	}
+	var out struct {
+		Subscriptions []MAXSubscription `json:"subscriptions"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out.Subscriptions, nil
+}
+
+// ClearSubscriptions removes webhook subscriptions so GET /updates (long-poll) receives events.
+func (m *MAXClient) ClearSubscriptions() error {
+	subs, err := m.ListSubscriptions()
+	if err != nil {
+		return err
+	}
+	for _, s := range subs {
+		u := strings.TrimSpace(s.URL)
+		if u == "" {
+			continue
+		}
+		req, err := http.NewRequest("DELETE", m.baseURL+"/subscriptions?url="+url.QueryEscape(u), nil)
+		if err != nil {
+			return err
+		}
+		m.auth(req)
+		resp, err := m.client.Do(req)
+		if err != nil {
+			return err
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			logrus.WithField("status", resp.StatusCode).Warn("MAX delete subscription failed")
+		}
+	}
+	return nil
 }

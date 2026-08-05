@@ -116,15 +116,30 @@ func main() {
 		Edit: editSvc, Search: searchSvc, MediaFX: mediaFX, Distribution: distSvc,
 		Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.10.16",
+		MaxOn: maxC.Enabled(), Version: "2.10.17",
 	}
-	if cfg.BotMode == "polling" && maxC.Enabled() {
+	botMode := strings.ToLower(strings.TrimSpace(cfg.BotMode))
+	if botMode != "polling" && botMode != "webhook" {
+		botMode = "polling"
+	}
+	// Webhook without secret / without active subscription cannot receive Start — use long-poll.
+	if botMode == "webhook" && maxC.Enabled() {
+		if strings.TrimSpace(os.Getenv("MAX_WEBHOOK_SECRET")) == "" {
+			logrus.Warn("BOT_MODE=webhook without MAX_WEBHOOK_SECRET — switching to polling")
+			botMode = "polling"
+		} else if subs, err := maxC.ListSubscriptions(); err != nil {
+			logrus.WithError(err).Warn("cannot verify MAX subscriptions — switching to polling")
+			botMode = "polling"
+		} else if len(subs) == 0 {
+			logrus.Warn("BOT_MODE=webhook but no subscriptions — switching to polling so Start works")
+			botMode = "polling"
+		}
+	}
+	cfg.BotMode = botMode
+	if maxC.Enabled() && botMode == "polling" {
 		go maxBot.StartPolling()
-	} else if maxC.Enabled() && cfg.BotMode != "webhook" {
-		logrus.Warnf("BOT_MODE=%q — polling выключен (ожидается polling|webhook)", cfg.BotMode)
-	}
-	if cfg.BotMode == "webhook" && os.Getenv("MAX_WEBHOOK_SECRET") == "" {
-		logrus.Warn("BOT_MODE=webhook but MAX_WEBHOOK_SECRET is empty — webhook will reject all requests")
+	} else if maxC.Enabled() && botMode == "webhook" {
+		logrus.Info("MAX bot mode=webhook (polling off)")
 	}
 	if !maxC.Enabled() {
 		logrus.Warn("MAX_BOT_TOKEN пуст — бот не отвечает")
@@ -150,6 +165,6 @@ func main() {
 	if services.LyricsAssistEnabled() {
 		logrus.Info("lyrics assist enabled (Pollinations free / OpenAI-compatible)")
 	}
-	logrus.Infof("UVO 2.10.16 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
+	logrus.Infof("UVO 2.10.17 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

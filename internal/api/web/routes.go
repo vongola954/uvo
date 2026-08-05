@@ -98,6 +98,11 @@ func Register(r *gin.Engine, d *Deps) {
 			"media_video":        d.MediaFX != nil && d.MediaFX.EnabledVideo(),
 			"distribution":       d.Distribution != nil,
 		}
+		if d.Cfg != nil {
+			slim["bot_mode"] = d.Cfg.BotMode
+		} else {
+			slim["bot_mode"] = os.Getenv("BOT_MODE")
+		}
 		// Full dump only with metrics token (ops).
 		tok := strings.TrimSpace(os.Getenv("METRICS_TOKEN"))
 		fullOK := tok != "" && (c.GetHeader("X-Metrics-Token") == tok || c.Query("token") == tok)

@@ -62,10 +62,23 @@ func (b *Bot) StartPolling() {
 		logrus.Warn("MAX bot disabled: no token")
 		return
 	}
+	// Fallback username from env if /me is slow/fails (open_app needs it).
+	if u := strings.TrimPrefix(strings.TrimSpace(os.Getenv("MAX_BOT_USERNAME")), "@"); u != "" {
+		b.max.SetUsername(u)
+	}
 	if me, err := b.max.Me(); err != nil {
 		logrus.WithError(err).Warn("MAX /me failed — проверьте MAX_BOT_TOKEN и platform-api2.max.ru")
 	} else {
 		logrus.WithFields(logrus.Fields{"me": me, "startapp": b.max.StartAppURL()}).Info("MAX bot online")
+	}
+	// Webhook subscriptions steal updates from long-poll — clear them in polling mode.
+	if subs, err := b.max.ListSubscriptions(); err != nil {
+		logrus.WithError(err).Warn("MAX list subscriptions failed")
+	} else if len(subs) > 0 {
+		logrus.WithField("n", len(subs)).Warn("clearing webhook subscriptions so polling gets bot_started")
+		if err := b.max.ClearSubscriptions(); err != nil {
+			logrus.WithError(err).Warn("MAX clear subscriptions failed")
+		}
 	}
 	if err := b.max.SetCommands([]map[string]string{
 		{"name": "start", "description": "Открыть UVO / Запуск"},
@@ -79,7 +92,9 @@ func (b *Bot) StartPolling() {
 	} else {
 		logrus.Info("MAX slash commands registered")
 	}
-	logrus.WithFields(logrus.Fields{"web": b.webURL, "mode": "polling"}).Info("MAX long-poll + studio CTA")
+	logrus.WithFields(logrus.Fields{
+		"web": b.webURL, "mode": "polling", "startapp": b.max.StartAppURL(), "bot": b.max.Username(),
+	}).Info("MAX long-poll + studio CTA")
 
 	backoff := 3 * time.Second
 	for {
@@ -119,7 +134,11 @@ func (b *Bot) dispatch(u clients.MAXUpdate) {
 	switch u.UpdateType {
 	case "bot_started":
 		chatID, userID := resolveChatUser(u)
-		logrus.WithFields(logrus.Fields{"chat_id": chatID, "user_id": userID}).Info("bot_started")
+		logrus.WithFields(logrus.Fields{"chat_id": chatID, "user_id": userID, "payload": u.Payload}).Info("bot_started")
+		if chatID == 0 && userID == 0 {
+			logrus.Warn("bot_started without chat_id/user_id — cannot reply")
+			return
+		}
 		b.sendHome(chatID, userID, "Добро пожаловать!")
 	case "message_created":
 		text, chatID, userIDStr, userID := extractMessage(u)
@@ -127,13 +146,18 @@ func (b *Bot) dispatch(u clients.MAXUpdate) {
 			return
 		}
 		b.HandleText(userIDStr, text, chatID, userID)
+	default:
+		logrus.WithField("type", u.UpdateType).Debug("MAX update ignored")
 	}
 }
 
 func resolveChatUser(u clients.MAXUpdate) (chatID, userID int64) {
 	chatID = u.ChatID
+	userID = u.UserID
 	if u.User != nil {
-		userID = u.User.ID64()
+		if id := u.User.ID64(); id != 0 {
+			userID = id
+		}
 	}
 	if u.Message != nil {
 		if u.Message.ChatID != 0 {
@@ -150,6 +174,13 @@ func resolveChatUser(u clients.MAXUpdate) (chatID, userID int64) {
 		if u.Message.Sender != nil && userID == 0 {
 			userID = u.Message.Sender.ID64()
 		}
+	}
+	// Dialog fallback: MAX often uses the same id for private chat and user.
+	if chatID == 0 && userID != 0 {
+		chatID = userID
+	}
+	if userID == 0 && chatID != 0 {
+		userID = chatID
 	}
 	return chatID, userID
 }
@@ -171,16 +202,19 @@ func extractMessage(u clients.MAXUpdate) (text string, chatID int64, userIDStr s
 }
 
 func (b *Bot) HandleText(userIDStr, text string, chatID, userID int64) {
-	low := strings.TrimSpace(text)
+	low := strings.ToLower(strings.TrimSpace(text))
+	for _, p := range []string{"❓ ", "⚡ ", "/"} {
+		low = strings.TrimPrefix(low, p)
+	}
 	switch {
-	case low == "/start" || low == "start":
+	case low == "start" || low == "старт" || low == "запуск":
 		b.sendHome(chatID, userID, "")
-	case low == "/help" || low == "❓ /help":
+	case low == "help":
 		_ = b.max.SendStudioTo(userID, chatID,
 			"Команды:\n«Запуск» — веб-студия в MAX\n/generate — трек в чате (−1)\n/credits — баланс\n/login — ссылка с автологином\n\n"+
 				fmt.Sprintf("%d бесплатно · пакеты от 99₽.", services.FreeCredits),
 			b.studioURL("/"))
-	case low == "/credits" || low == "/balance":
+	case low == "credits" || low == "balance":
 		bal := 0
 		if b.credits != nil {
 			bal = b.credits.Balance(userIDStr)
@@ -188,17 +222,17 @@ func (b *Bot) HandleText(userIDStr, text string, chatID, userID int64) {
 		_ = b.max.SendStudioTo(userID, chatID,
 			fmt.Sprintf("Баланс: %d кредитов\n1 кредит = 1 песня · кавер/караоке/клон −2\nПополнить: «Запуск» → Кредиты", bal),
 			b.studioURL("/#pricing"))
-	case low == "/login" || low == "/web" || low == "/auth":
+	case low == "login" || low == "web" || low == "auth":
 		b.sendLoginLink(chatID, userID, userIDStr, "/")
-	case low == "/studio" || strings.Contains(low, "студи"):
+	case low == "studio" || strings.Contains(low, "студи"):
 		b.sendHome(chatID, userID, "Открой «Запуск» ниже.")
-	case low == "/tracks":
+	case low == "tracks":
 		b.sendLoginLink(chatID, userID, userIDStr, "/tracks.html")
-	case low == "/feed":
+	case low == "feed":
 		b.sendLoginLink(chatID, userID, userIDStr, "/feed.html")
-	case low == "/playlists":
+	case low == "playlists":
 		b.sendLoginLink(chatID, userID, userIDStr, "/playlists.html")
-	case low == "/generate" || low == "⚡ /generate":
+	case low == "generate" || strings.Contains(low, "generate"):
 		b.states.Store(userIDStr, "await_prompt")
 		_ = b.max.SendMessageToUser(userID, chatID, "Опиши трек одним сообщением (жанр, настроение, тема).\nСтоимость: −1 кредит.\n\nИли «Запуск» → режимы Идея / Текст / Instrumental.")
 	default:
