@@ -56,5 +56,5 @@ Example: if AceData = 4 ₽/gen and pack100 sells at 7 ₽/credit → margin ≈
 
 1. Paste AceData ₽/gen into TBD rows.
 2. Recompute margin for pack5 / pack100.
-3. Go/no-go dual in `ROADMAP` / next epoch.
+3. Go/no-go dual — зафиксировать в `DEVELOPMENT.md` / следующем релизе.
 4. YooKassa keys (P0a) — separate; checkout already coded.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,10 @@ func main() {
 	playlistSvc := services.NewPlaylistService(gdb)
 	editSvc := services.NewEditService(ace, trackRepo, gdb, cfg.MediaRoot)
 	searchSvc := services.NewSearchService(gdb)
+	veo := clients.NewVeoClient()
+	upscale := clients.NewUpscaleClient(cfg.SunoAPIKey)
+	mediaFX := services.NewMediaFXService(gdb, kling, veo, upscale, cfg.MediaRoot, cfg.WebPublicURL)
+	distSvc := services.NewDistributionService(gdb, trackRepo)
 	limiter := services.NewRateLimiter(gdb)
 	credits := services.NewCreditService(gdb)
 	jobs := services.NewJobStore(gdb)
@@ -91,6 +96,15 @@ func main() {
 	if hedra == nil || !hedra.Enabled() {
 		logrus.Info("HEDRA_API_KEY не задан — портрет через Kling-клип (без точного lip-sync)")
 	}
+	if mediaFX == nil || !mediaFX.EnabledUpscale() {
+		logrus.Info("апскейл: REPLICATE_API_TOKEN (или SUNO_API_KEY для AceData fal)")
+	}
+	if mediaFX == nil || !mediaFX.EnabledVideo() {
+		logrus.Info("видео: VEO_API_KEY/GEMINI_API_KEY или SUNO_API_KEY (Kling)")
+	}
+	if strings.TrimSpace(os.Getenv("DISTRIBUTION_WEBHOOK_URL")) == "" {
+		logrus.Info("DISTRIBUTION_WEBHOOK_URL пуст — релизы в очереди (ручной/партнёрский DSP)")
+	}
 
 	logins := services.NewLoginCodeStore()
 	yoo := clients.NewYooKassaClient()
@@ -99,9 +113,10 @@ func main() {
 		Cfg: cfg, DB: gdb, Gen: genSvc, Credits: credits, Limiter: limiter, Jobs: jobs,
 		Tracks: trackRepo, Voice: voiceSvc, Cover: coverSvc, Karaoke: karaokeSvc, Portrait: portraitSvc,
 		Social: socialSvc, Playlists: playlistSvc,
-		Edit: editSvc, Search: searchSvc, Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
+		Edit: editSvc, Search: searchSvc, MediaFX: mediaFX, Distribution: distSvc,
+		Ace: ace, Eleven: el, Hedra: hedra, Yoo: yoo,
 		Logins: logins, MaxBot: maxBot,
-		MaxOn: maxC.Enabled(), Version: "2.9.0",
+		MaxOn: maxC.Enabled(), Version: "2.10.0",
 	}
 	if cfg.BotMode == "polling" && maxC.Enabled() {
 		go maxBot.StartPolling()
@@ -132,6 +147,6 @@ func main() {
 	if services.CreditsUnlimited() {
 		logrus.Warn("CREDITS_UNLIMITED=true — кредиты и rate-limit отключены (только для тестов)")
 	}
-	logrus.Infof("UVO 2.9.0 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
+	logrus.Infof("UVO 2.10.0 on %s:%d (db=%s prod=%v bot=%s max=%v music=%s media=%s)", cfg.WebHost, cfg.WebPort, cfg.DBDriver, cfg.IsProduction(), cfg.BotMode, maxC.Enabled(), cfg.MusicProvider, cfg.MediaRoot)
 	_ = r.Run(fmt.Sprintf("%s:%d", cfg.WebHost, cfg.WebPort))
 }

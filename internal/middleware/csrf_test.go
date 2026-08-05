@@ -60,3 +60,17 @@ func TestCSRFMaxWebAppExempt(t *testing.T) {
 		t.Fatalf("max-webapp should skip CSRF, got %d", w.Code)
 	}
 }
+
+func TestCSRFDistributionWebhookExempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(CSRF())
+	r.POST("/api/distribution/webhook", func(c *gin.Context) { c.Status(200) })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/distribution/webhook", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("distribution webhook should skip CSRF, got %d", w.Code)
+	}
+}

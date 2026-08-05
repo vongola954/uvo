@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>UVO — Видео и фото</title>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/auth.js?v=2.10.0"></script>
+<style>
+  :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
+  body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
+  .glass { background:rgba(18,18,22,.72); border:1px solid var(--border); backdrop-filter:blur(20px); border-radius:20px; }
+  .bottom-nav { position:fixed; left:0; right:0; bottom:0; z-index:60; display:grid; grid-template-columns:repeat(4,1fr);
+    gap:2px; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:rgba(5,5,7,.92); border-top:1px solid var(--border); backdrop-filter:blur(18px); }
+  .bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; border-radius:14px;
+    font-size:10px; font-weight:600; color:#71717a; text-decoration:none; }
+  .bottom-nav .uvo-nav-active { color:var(--accent); background:var(--accent-dim); }
+  .tab-on { border-color:rgba(52,211,153,.45); color:#34d399; background:rgba(52,211,153,.1); }
+</style>
+</head><body class="p-5 max-w-2xl mx-auto">
+<a href="/?view=hub" class="text-emerald-400 text-sm">← Меню</a>
+<h1 class="text-2xl font-bold mt-4 mb-1">Видео и фото</h1>
+<p class="text-xs text-zinc-500 mb-5">Veo / Kling · оживить · апскейл. Кредиты: видео −3 · animate −2 · upscale −1</p>
+<div id="auth"></div>
+
+<div class="flex flex-wrap gap-2 mb-4" id="tabs">
+  <button type="button" data-tab="video" class="tab-on text-xs px-3 py-2 rounded-xl border border-white/10">Создать видео</button>
+  <button type="button" data-tab="animate" class="text-xs px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Оживить фото</button>
+  <button type="button" data-tab="upscale" class="text-xs px-3 py-2 rounded-xl border border-white/10 text-zinc-400">Улучшить фото</button>
+</div>
+
+<section id="panel-video" class="glass p-5 space-y-3">
+  <p class="text-sm text-zinc-400">Текст → клип (Veo при ключе, иначе Kling). Можно приложить референс-фото.</p>
+  <textarea id="video-prompt" rows="3" placeholder="Кинематографичный клип: девушка на крыше ночного города, неон, дождь…" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm"></textarea>
+  <input id="video-image" type="file" accept="image/*" class="w-full text-sm">
+  <button id="video-go" class="w-full py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm">Сгенерировать (−3)</button>
+</section>
+
+<section id="panel-animate" class="glass p-5 space-y-3 hidden">
+  <p class="text-sm text-zinc-400">Фото → короткое движение (Kling, −2).</p>
+  <input id="animate-image" type="file" accept="image/*" class="w-full text-sm">
+  <input id="animate-prompt" type="text" placeholder="Промпт (опц.)" class="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm">
+  <button id="animate-go" class="w-full py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm">Оживить (−2)</button>
+</section>
+
+<section id="panel-upscale" class="glass p-5 space-y-3 hidden">
+  <p class="text-sm text-zinc-400">Повысить разрешение (Replicate Real-ESRGAN или AceData fal, −1).</p>
+  <input id="upscale-image" type="file" accept="image/*" class="w-full text-sm">
+  <button id="upscale-go" class="w-full py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm">Улучшить (−1)</button>
+</section>
+
+<p id="status" class="text-xs text-zinc-500 mt-4"></p>
+<div id="preview" class="mt-4 space-y-3"></div>
+<div id="history" class="mt-6 space-y-2 text-sm text-zinc-400"></div>
+
+<nav class="bottom-nav" aria-label="Основная навигация">
+  <a href="/?view=lyrics"><span>✎</span>Стихи</a>
+  <a href="/?view=create"><span>♪</span>Создать</a>
+  <a href="/tracks.html"><span>☰</span>Треки</a>
+  <a href="/?view=balance"><span>◇</span>Баланс</a>
+</nav>
+<script>
+UVO.mountAuthBar(document.getElementById('auth'));
+const status = document.getElementById('status');
+const preview = document.getElementById('preview');
+
+document.querySelectorAll('#tabs [data-tab]').forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.remove('tab-on'));
+    btn.classList.add('tab-on');
+    ['video', 'animate', 'upscale'].forEach((t) => {
+      document.getElementById('panel-' + t).classList.toggle('hidden', t !== btn.dataset.tab);
+    });
+  };
+});
+
+function showResult(res) {
+  preview.textContent = '';
+  if (!res || !res.url) return;
+  const url = res.url;
+  if (res.kind === 'upscale' || /\.(png|jpe?g|webp)(\?|$)/i.test(url)) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'w-full rounded-xl border border-white/10';
+    preview.appendChild(img);
+  } else {
+    const v = document.createElement('video');
+    v.src = url;
+    v.controls = true;
+    v.className = 'w-full rounded-xl border border-white/10 bg-black';
+    preview.appendChild(v);
+  }
+  if (res.note) {
+    const n = document.createElement('p');
+    n.className = 'text-xs text-zinc-500';
+    n.textContent = res.note;
+    preview.appendChild(n);
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.className = 'text-emerald-400 text-sm';
+  a.textContent = 'Открыть результат →';
+  preview.appendChild(a);
+}
+
+async function postMedia(path, fd) {
+  status.textContent = 'Генерация… это может занять 1–3 мин';
+  preview.textContent = '';
+  await UVO.ensureDevToken();
+  const res = await UVO.api(path, { method: 'POST', body: fd });
+  const d = await res.json();
+  if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+  status.textContent = 'Готово · баланс: ' + (d.balance != null ? d.balance : '—');
+  showResult(d.result);
+  loadHistory();
+}
+
+document.getElementById('video-go').onclick = async () => {
+  try {
+    const prompt = document.getElementById('video-prompt').value.trim();
+    if (!prompt) { status.textContent = 'Нужен промпт'; return; }
+    const fd = new FormData();
+    fd.append('prompt', prompt);
+    const f = document.getElementById('video-image').files[0];
+    if (f) fd.append('image', f);
+    await postMedia('/api/media/video', fd);
+  } catch (e) { status.textContent = e.message; }
+};
+
+document.getElementById('animate-go').onclick = async () => {
+  try {
+    const f = document.getElementById('animate-image').files[0];
+    if (!f) { status.textContent = 'Нужно фото'; return; }
+    const fd = new FormData();
+    fd.append('image', f);
+    const p = document.getElementById('animate-prompt').value.trim();
+    if (p) fd.append('prompt', p);
+    await postMedia('/api/media/animate', fd);
+  } catch (e) { status.textContent = e.message; }
+};
+
+document.getElementById('upscale-go').onclick = async () => {
+  try {
+    const f = document.getElementById('upscale-image').files[0];
+    if (!f) { status.textContent = 'Нужно фото'; return; }
+    const fd = new FormData();
+    fd.append('image', f);
+    await postMedia('/api/media/upscale', fd);
+  } catch (e) { status.textContent = e.message; }
+};
+
+async function loadHistory() {
+  const el = document.getElementById('history');
+  try {
+    await UVO.ensureDevToken();
+    const res = await UVO.api('/api/media/assets');
+    const d = await res.json();
+    const list = d.assets || [];
+    el.textContent = '';
+    if (!list.length) {
+      el.innerHTML = '<p class="text-xs text-zinc-600">История пуста</p>';
+      return;
+    }
+    el.appendChild(Object.assign(document.createElement('p'), {
+      className: 'text-[11px] uppercase tracking-widest text-zinc-500 mb-2',
+      textContent: 'Недавние',
+    }));
+    list.slice(0, 12).forEach((a) => {
+      const kind = a.Kind || a.kind || '';
+      const path = a.FilePath || a.file_path || '';
+      let url = path;
+      if (path && !/^https?:/i.test(path)) url = '/media/assets/' + path.split(/[/\\]/).pop();
+      const row = document.createElement('a');
+      row.href = url;
+      row.target = '_blank';
+      row.rel = 'noopener';
+      row.className = 'block glass px-4 py-3 text-xs hover:border-emerald-500/40';
+      row.textContent = kind + ' · #' + (a.ID || a.id);
+      el.appendChild(row);
+    });
+  } catch (_) {}
+}
+loadHistory();
+
+try {
+  const tab = new URLSearchParams(location.search).get('tab');
+  if (tab) {
+    const b = document.querySelector('#tabs [data-tab="' + tab + '"]');
+    if (b) b.click();
+  }
+} catch (_) {}
+</script>
+</body></html>

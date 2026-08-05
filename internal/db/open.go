@@ -49,6 +49,7 @@ func AutoMigrate(gdb *gorm.DB) error {
 		&models.VoiceCloneEvent{},
 		&models.MediaAsset{},
 		&models.PaymentOrder{},
+		&models.DistributionRelease{},
 	); err != nil {
 		return err
 	}

@@ -61,6 +61,15 @@
           location.href = '/tracks.html';
           return;
         }
+        if (view === 'media') {
+          const tab = extra || '';
+          location.href = '/media.html' + (tab ? ('?tab=' + encodeURIComponent(tab)) : '');
+          return;
+        }
+        if (view === 'distribution') {
+          location.href = '/distribution.html';
+          return;
+        }
         if (view === 'playlists') {
           location.href = '/playlists.html';
           return;

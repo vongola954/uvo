@@ -29,6 +29,15 @@ func (k *KlingClient) Enabled() bool { return k != nil && k.apiKey != "" }
 
 // ImageToVideo animates a portrait (not true lip-sync; use Hedra for that).
 func (k *KlingClient) ImageToVideo(imageURL, prompt string, durationSec int) (videoURL string, err error) {
+	return k.generateVideo("image2video", imageURL, prompt, durationSec)
+}
+
+// TextToVideo generates a clip from a prompt (AceData Kling; Veo-like fallback).
+func (k *KlingClient) TextToVideo(prompt string, durationSec int) (videoURL string, err error) {
+	return k.generateVideo("text2video", "", prompt, durationSec)
+}
+
+func (k *KlingClient) generateVideo(action, imageURL, prompt string, durationSec int) (videoURL string, err error) {
 	if !k.Enabled() {
 		return "", fmt.Errorf("kling not configured")
 	}
@@ -36,17 +45,19 @@ func (k *KlingClient) ImageToVideo(imageURL, prompt string, durationSec int) (vi
 		durationSec = 10
 	}
 	if prompt == "" {
-		prompt = "Close-up portrait of the person singing passionately, natural facial expression, music video style, cinematic lighting"
+		prompt = "Cinematic music video, dynamic camera, high detail"
 	}
 	payload := map[string]interface{}{
-		"action":          "image2video",
-		"model":           "kling-v2-6",
-		"mode":            "pro",
-		"start_image_url": imageURL,
-		"prompt":          prompt,
-		"duration":        durationSec,
-		"aspect_ratio":    "9:16",
-		"async":           true,
+		"action":       action,
+		"model":        "kling-v2-6",
+		"mode":         "pro",
+		"prompt":       prompt,
+		"duration":     durationSec,
+		"aspect_ratio": "9:16",
+		"async":        true,
+	}
+	if imageURL != "" {
+		payload["start_image_url"] = imageURL
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", "https://api.acedata.cloud/kling/videos", bytes.NewReader(body))

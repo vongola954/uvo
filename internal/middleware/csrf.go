@@ -34,7 +34,7 @@ func needsCSRF(method, path string) bool {
 		return false
 	}
 	// All mutating /api/* except webhook (uses its own secret)
-	if path == "/api/max/webhook" || path == "/api/auth/token" || path == "/api/payments/yookassa" {
+	if path == "/api/max/webhook" || path == "/api/auth/token" || path == "/api/payments/yookassa" || path == "/api/distribution/webhook" {
 		return false
 	}
 	return true

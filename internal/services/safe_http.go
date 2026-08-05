@@ -24,6 +24,10 @@ var allowedHostSuffixes = []string{
 	"together.ai",
 	"klingai.com",
 	"googleapis.com",
+	"replicate.com",
+	"replicate.delivery",
+	"fal.ai",
+	"fal.media",
 }
 
 func hostAllowed(host string) bool {

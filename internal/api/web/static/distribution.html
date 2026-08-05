@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>UVO — Дистрибуция</title>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/auth.js?v=2.10.0"></script>
+<style>
+  :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
+  body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
+  .glass { background:rgba(18,18,22,.72); border:1px solid var(--border); backdrop-filter:blur(20px); border-radius:20px; }
+  .bottom-nav { position:fixed; left:0; right:0; bottom:0; z-index:60; display:grid; grid-template-columns:repeat(4,1fr);
+    gap:2px; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:rgba(5,5,7,.92); border-top:1px solid var(--border); backdrop-filter:blur(18px); }
+  .bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; border-radius:14px;
+    font-size:10px; font-weight:600; color:#71717a; text-decoration:none; }
+  .bottom-nav .uvo-nav-active { color:var(--accent); background:var(--accent-dim); }
+</style>
+</head><body class="p-5 max-w-2xl mx-auto">
+<a href="/?view=hub" class="text-emerald-400 text-sm">← Меню</a>
+<h1 class="text-2xl font-bold mt-4 mb-1">Дистрибуция</h1>
+<p class="text-xs text-zinc-500 mb-5">Spotify · Яндекс Музыка · Apple Music · VK (−5 кредитов за релиз)</p>
+<div id="auth"></div>
+
+<div class="glass p-5 mb-5 space-y-3">
+  <p class="text-sm text-zinc-400">Отправьте готовый трек на площадки. Заявка встаёт в очередь; при настроенном партнёрском webhook уходит автоматически.</p>
+  <a href="/tracks.html" class="inline-block text-sm text-emerald-400 font-semibold">Выбрать трек →</a>
+  <p class="text-[11px] text-zinc-600">В карточке трека нажмите «В дистрибуцию». Платформы по умолчанию: Spotify, Яндекс, Apple, VK.</p>
+</div>
+
+<div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
+
+<nav class="bottom-nav" aria-label="Основная навигация">
+  <a href="/?view=lyrics"><span>✎</span>Стихи</a>
+  <a href="/?view=create"><span>♪</span>Создать</a>
+  <a href="/tracks.html"><span>☰</span>Треки</a>
+  <a href="/?view=balance"><span>◇</span>Баланс</a>
+</nav>
+<script>
+UVO.mountAuthBar(document.getElementById('auth'));
+async function load() {
+  const el = document.getElementById('list');
+  try {
+    await UVO.ensureDevToken();
+    const res = await UVO.api('/api/distribution');
+    const d = await res.json();
+    if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+    const list = d.releases || [];
+    el.textContent = '';
+    if (!list.length) {
+      el.innerHTML = '<div class="glass p-6 text-center text-zinc-500">Пока нет релизов. <a class="text-emerald-400" href="/tracks.html">Открыть треки →</a></div>';
+      return;
+    }
+    list.forEach((r) => {
+      const title = r.title || r.Title || 'Релиз';
+      const artist = r.artist || r.Artist || '';
+      const status = r.status || r.Status || '';
+      const plats = r.platforms || r.Platforms || '';
+      const id = r.id || r.ID || '';
+      const card = document.createElement('div');
+      card.className = 'glass p-4 space-y-1';
+      card.innerHTML =
+        '<div class="font-medium text-white">' + title + (artist ? ' · ' + artist : '') + '</div>' +
+        '<div class="text-xs text-emerald-400/90">' + status + '</div>' +
+        '<div class="text-[11px] text-zinc-500">' + plats + (id ? ' · ' + id.slice(0, 8) : '') + '</div>';
+      el.appendChild(card);
+    });
+  } catch (e) {
+    el.textContent = e.message;
+  }
+}
+load();
+</script>
+</body></html>

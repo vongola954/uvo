@@ -23,9 +23,13 @@ func PublicUpload(mediaRoot string, data []byte, ext string) (filename, absPath 
 		ext = "." + ext
 	}
 	switch ext {
-	case ".mp3", ".wav", ".m4a", ".ogg":
+	case ".mp3", ".wav", ".m4a", ".ogg", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm":
 	default:
-		ext = ".mp3"
+		if strings.HasPrefix(ext, ".jp") {
+			ext = ".jpg"
+		} else {
+			ext = ".mp3"
+		}
 	}
 	dir := filepath.Join(mediaRoot, "uploads")
 	if err := os.MkdirAll(dir, 0755); err != nil {

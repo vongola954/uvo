@@ -23,40 +23,44 @@ import (
 )
 
 type Deps struct {
-	Cfg       *config.Config
-	DB        *gorm.DB
-	Gen       *services.GenerationService
-	Credits   *services.CreditService
-	Limiter   *services.RateLimiter
-	Jobs      *services.JobStore
-	Tracks    *repository.TrackRepository
-	Voice     *services.VoiceCloneService
-	Cover     *services.CoverService
-	Karaoke   *services.KaraokeService
-	Portrait  *services.PortraitService
-	Social    *services.SocialService
-	Playlists *services.PlaylistService
-	Edit      *services.EditService
-	Search    *services.SearchService
-	Ace       *clients.AceDataClient
-	Eleven    *clients.ElevenLabsClient
-	Hedra     *clients.HedraClient
-	Yoo       *clients.YooKassaClient
-	Logins    *services.LoginCodeStore
-	MaxBot    *bot.Bot
-	MaxOn     bool
-	Version   string
+	Cfg          *config.Config
+	DB           *gorm.DB
+	Gen          *services.GenerationService
+	Credits      *services.CreditService
+	Limiter      *services.RateLimiter
+	Jobs         *services.JobStore
+	Tracks       *repository.TrackRepository
+	Voice        *services.VoiceCloneService
+	Cover        *services.CoverService
+	Karaoke      *services.KaraokeService
+	Portrait     *services.PortraitService
+	Social       *services.SocialService
+	Playlists    *services.PlaylistService
+	Edit         *services.EditService
+	Search       *services.SearchService
+	MediaFX      *services.MediaFXService
+	Distribution *services.DistributionService
+	Ace          *clients.AceDataClient
+	Eleven       *clients.ElevenLabsClient
+	Hedra        *clients.HedraClient
+	Yoo          *clients.YooKassaClient
+	Logins       *services.LoginCodeStore
+	MaxBot       *bot.Bot
+	MaxOn        bool
+	Version      string
 }
 
 // Register mounts public, webhook and authenticated API groups.
 func Register(r *gin.Engine, d *Deps) {
 	if d.Version == "" {
-		d.Version = "2.9.0"
+		d.Version = "2.10.0"
 	}
 
 	r.Static("/static", "./internal/api/web/static")
 	r.GET("/", func(c *gin.Context) { c.File("./internal/api/web/static/index.html") })
 	r.GET("/tracks.html", func(c *gin.Context) { c.File("./internal/api/web/static/tracks.html") })
+	r.GET("/media.html", func(c *gin.Context) { c.File("./internal/api/web/static/media.html") })
+	r.GET("/distribution.html", func(c *gin.Context) { c.File("./internal/api/web/static/distribution.html") })
 	r.GET("/karaoke.html", func(c *gin.Context) { c.File("./internal/api/web/static/karaoke.html") })
 	r.GET("/feed.html", func(c *gin.Context) { c.File("./internal/api/web/static/feed.html") })
 	r.GET("/playlists.html", func(c *gin.Context) { c.File("./internal/api/web/static/playlists.html") })
@@ -84,6 +88,10 @@ func Register(r *gin.Engine, d *Deps) {
 			"lyrics_assist":      strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "",
 			"prod_guards":        prodGuards,
 			"credits_unlimited":  services.CreditsUnlimited(),
+			"media_upscale":      d.MediaFX != nil && d.MediaFX.EnabledUpscale(),
+			"media_animate":      d.MediaFX != nil && d.MediaFX.EnabledAnimate(),
+			"media_video":        d.MediaFX != nil && d.MediaFX.EnabledVideo(),
+			"distribution":       d.Distribution != nil,
 		}
 		// Full dump only with metrics token (ops).
 		tok := strings.TrimSpace(os.Getenv("METRICS_TOKEN"))
@@ -115,6 +123,7 @@ func Register(r *gin.Engine, d *Deps) {
 	r.GET("/api/auth/me", d.authMe)
 	r.POST("/api/max/webhook", middleware.MaxWebhookAuth(), d.maxWebhook)
 	r.POST("/api/payments/yookassa", d.yooWebhook)
+	r.POST("/api/distribution/webhook", d.distributionWebhook)
 	r.GET("/tracks/:id/play", d.playTrack)
 	r.GET("/tracks/:id/download", d.downloadTrack)
 	r.GET("/tracks/:id/instrumental", d.playInstrumental)
@@ -158,6 +167,12 @@ func Register(r *gin.Engine, d *Deps) {
 		api.POST("/cover", d.coverUpload)
 		api.POST("/lyrics/assist", d.lyricsAssist)
 		api.GET("/elevenlabs/voices", d.elevenVoices)
+		api.POST("/media/upscale", d.upscaleImage)
+		api.POST("/media/animate", d.animateImage)
+		api.POST("/media/video", d.generateVideo)
+		api.GET("/media/assets", d.listMediaFX)
+		api.POST("/tracks/:id/distribute", d.distributeTrack)
+		api.GET("/distribution", d.listDistribution)
 	}
 }
 

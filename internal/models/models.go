@@ -32,15 +32,33 @@ type Track struct {
 	CreatedAt      time.Time
 }
 
-// MediaAsset stores generated karaoke/portrait artifacts.
+// MediaAsset stores generated karaoke/portrait/video/upscale artifacts.
 type MediaAsset struct {
 	ID        uint      `gorm:"primaryKey"`
 	UserID    string    `gorm:"not null;index"`
-	TrackID   uint      `gorm:"not null;index"`
-	Kind      string    `gorm:"not null;index"` // karaoke | portrait
+	TrackID   uint      `gorm:"index"` // 0 = not tied to a track
+	Kind      string    `gorm:"not null;index"` // karaoke | portrait | video | upscale | animate
 	FilePath  string
 	MetaJSON  string // timing words, provider ids, etc.
 	CreatedAt time.Time
+}
+
+// DistributionRelease is a Spotify/Yandex/Apple/VK release request (partner or manual).
+type DistributionRelease struct {
+	ID           string    `gorm:"primaryKey" json:"id"`
+	UserID       string    `gorm:"index;not null" json:"user_id"`
+	TrackID      uint      `gorm:"index;not null" json:"track_id"`
+	Title        string    `json:"title"`
+	Artist       string    `json:"artist"`
+	Genre        string    `json:"genre,omitempty"`
+	Platforms    string    `json:"platforms"` // comma: spotify,yandex,apple,vk
+	Status       string    `gorm:"index" json:"status"` // draft|queued|submitted|live|rejected
+	ExternalID   string    `json:"external_id,omitempty"`
+	CoverPath    string    `json:"cover_path,omitempty"`
+	Notes        string    `json:"notes,omitempty"`
+	CreditsSpent int       `json:"credits_spent,omitempty"`
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type VoiceProfile struct {

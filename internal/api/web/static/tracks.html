@@ -5,7 +5,7 @@
 <title>UVO — Треки</title>
 <script src="https://st.max.ru/js/max-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/auth.js?v=2.9.0"></script>
+<script src="/static/auth.js?v=2.10.0"></script>
 <style>
   :root { --bg:#050507; --accent:#34d399; --border:rgba(255,255,255,.08); --accent-dim:rgba(52,211,153,.15); }
   body { background:var(--bg); color:#f4f4f5; font-family:Inter,system-ui,sans-serif; padding-bottom:5.5rem; }
@@ -19,7 +19,7 @@
 </head><body class="p-5 max-w-2xl mx-auto">
 <a href="/?view=hub" class="text-emerald-400 text-sm">← Меню</a>
 <h1 class="text-2xl font-bold mt-4 mb-2">Мои треки</h1>
-<p class="text-xs text-zinc-500 mb-5">Плейлист · скачать · минус · портрет · в ленту</p>
+<p class="text-xs text-zinc-500 mb-5">Скачать · минус · портрет · дистрибуция · в ленту</p>
 <div id="auth"></div>
 <div id="list" class="space-y-3 text-sm text-zinc-400">Загрузка…</div>
 <div id="portrait-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -88,6 +88,24 @@ function openPortrait(id) {
 document.getElementById('portrait-cancel').onclick = () => {
   document.getElementById('portrait-modal').classList.add('hidden');
 };
+async function distributeTrack(id, title) {
+  const artist = prompt('Исполнитель (как на площадках)', 'UVO Artist');
+  if (artist === null) return;
+  if (!confirm('Отправить «' + title + '» в дистрибуцию на Spotify / Яндекс / Apple / VK (−5 кредитов)?')) return;
+  try {
+    await UVO.ensureDevToken();
+    const res = await UVO.api('/api/tracks/' + id + '/distribute', {
+      method: 'POST',
+      body: JSON.stringify({ title: title, artist: artist || 'UVO Artist', platforms: ['spotify', 'yandex', 'apple', 'vk'] }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error((d.error && d.error.message) || d.error || res.status);
+    alert((d.note || 'Релиз в очереди') + (d.balance != null ? '\nБаланс: ' + d.balance : ''));
+    location.href = '/distribution.html';
+  } catch (e) {
+    alert(e.message || 'Не удалось отправить');
+  }
+}
 document.getElementById('portrait-go').onclick = async () => {
   const file = document.getElementById('portrait-file').files[0];
   const st = document.getElementById('portrait-status');
@@ -148,6 +166,7 @@ async function load() {
           .catch((e) => alert(e.message || 'Не удалось скачать'));
       });
       mk('Портрет', () => openPortrait(id));
+      mk('В дистрибуцию (−5)', () => distributeTrack(id, title));
       card.appendChild(actions);
       el.appendChild(card);
     });

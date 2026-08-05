@@ -270,6 +270,22 @@
             <div class="text-sm font-semibold text-emerald-400 mb-1">Минусовка / портрет</div>
             <p class="text-xs text-zinc-500">Стемы, караоке и singing portrait из ваших треков.</p>
           </button>
+          <button type="button" data-uvo-open="media" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Создать видео · Veo</div>
+            <p class="text-xs text-zinc-500">Текст или фото → клип. Kling / Google Veo (−3).</p>
+          </button>
+          <button type="button" data-uvo-open="media:animate" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Оживить фото</div>
+            <p class="text-xs text-zinc-500">Короткое движение на базе Kling (−2).</p>
+          </button>
+          <button type="button" data-uvo-open="media:upscale" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Улучшить фото</div>
+            <p class="text-xs text-zinc-500">Апскейл разрешения (−1).</p>
+          </button>
+          <button type="button" data-uvo-open="distribution" class="glass hub-card p-4">
+            <div class="text-sm font-semibold text-emerald-400 mb-1">Дистрибуция</div>
+            <p class="text-xs text-zinc-500">Spotify · Яндекс · Apple · VK (−5 за релиз).</p>
+          </button>
           <button type="button" data-uvo-open="balance" class="glass hub-card p-4">
             <div class="text-sm font-semibold text-emerald-400 mb-1">Баланс и тарифы</div>
             <p class="text-xs text-zinc-500">Пакеты от 99 ₽ · цена за песню как у рынка.</p>
@@ -279,6 +295,8 @@
           <a href="#showcase" class="btn-ghost text-xs px-3 py-2 rounded-xl uvo-marketing">Витрина</a>
           <a href="/feed.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Лента</a>
           <a href="/playlists.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Плейлисты</a>
+          <a href="/media.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Видео / фото</a>
+          <a href="/distribution.html" class="btn-ghost text-xs px-3 py-2 rounded-xl">Дистрибуция</a>
         </div>
       </div>
     </section>
@@ -531,8 +549,8 @@
     </nav>
   </div>
 
-  <script src="/static/auth.js?v=2.9.0"></script>
-  <script src="/static/app-shell.js?v=2.9.0"></script>
+  <script src="/static/auth.js?v=2.10.0"></script>
+  <script src="/static/app-shell.js?v=2.10.0"></script>
   <script>
     UVO.mountAuthBar(document.querySelector('#generate .glass') || document.querySelector('#generate'));
 
