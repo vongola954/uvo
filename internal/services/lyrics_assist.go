@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -17,15 +18,16 @@ import (
 const lyricsAssistDailyCap = 20
 
 // Free OpenAI-compatible endpoint (anonymous Pollinations). No signup / key.
-// KeylessAI was considered but often fails DNS; Pollinations is their main upstream and works.
+// Important: do NOT send Authorization — a Bearer turns the request into a paid
+// "authenticated" call and returns HTTP 402 when budget is empty.
 const defaultFreeLLMBase = "https://text.pollinations.ai/openai"
 const defaultFreeLLMModel = "openai"
 
 type lyricsLLMConfig struct {
-	BaseURL string
-	APIKey  string
-	Model   string
-	Provider string // pollinations | openai | custom
+	BaseURL  string
+	APIKey   string
+	Model    string
+	Provider string // pollinations | openai | custom | keyless
 	SendAuth bool
 }
 
@@ -51,28 +53,19 @@ func resolveLyricsLLMConfig() lyricsLLMConfig {
 	switch provider {
 	case "off", "disabled", "none":
 		return lyricsLLMConfig{}
-	case "pollinations", "free", "keyless":
+	case "pollinations", "free":
+		return freePollinationsConfig(base, model)
+	case "keyless":
 		if base == "" {
-			if provider == "keyless" {
-				base = "https://keylessai.thryx.workers.dev/v1"
-			} else {
-				base = defaultFreeLLMBase
-			}
+			base = "https://keylessai.thryx.workers.dev/v1"
 		}
 		if model == "" {
-			if provider == "keyless" {
-				model = "openai-fast"
-			} else {
-				model = defaultFreeLLMModel
-			}
+			model = "openai-fast"
 		}
-		// Pollinations anonymous must not send a fake Bearer (402). Keyless accepts any string.
-		sendAuth := provider == "keyless" || (!placeholderKey && key != "")
-		if provider == "keyless" && key == "" {
+		if key == "" || placeholderKey {
 			key = "not-needed"
-			sendAuth = true
 		}
-		return lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: provider, SendAuth: sendAuth}
+		return lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: "keyless", SendAuth: true}
 	case "openai":
 		if placeholderKey || key == "" {
 			return lyricsLLMConfig{}
@@ -83,10 +76,16 @@ func resolveLyricsLLMConfig() lyricsLLMConfig {
 		if model == "" {
 			model = "gpt-4o-mini"
 		}
-		return lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: "openai", SendAuth: true}
+		cfg := lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: "openai", SendAuth: true}
+		return finalizeLLMAuth(cfg)
 	}
 
-	// auto: real OpenAI key → OpenAI (or custom base); else free Pollinations
+	// auto: if base/host is Pollinations → always anonymous free path
+	if isPollinationsBase(base) {
+		return freePollinationsConfig(base, model)
+	}
+
+	// real OpenAI (or other custom) key
 	if key != "" && !placeholderKey {
 		if base == "" {
 			base = "https://api.openai.com/v1"
@@ -98,17 +97,55 @@ func resolveLyricsLLMConfig() lyricsLLMConfig {
 		if !strings.Contains(base, "api.openai.com") {
 			prov = "custom"
 		}
-		return lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: prov, SendAuth: true}
+		return finalizeLLMAuth(lyricsLLMConfig{BaseURL: base, APIKey: key, Model: model, Provider: prov, SendAuth: true})
 	}
 
-	// Free default — no key required
-	if base == "" {
+	return freePollinationsConfig(base, model)
+}
+
+func freePollinationsConfig(base, model string) lyricsLLMConfig {
+	if base == "" || !isPollinationsBase(base) {
 		base = defaultFreeLLMBase
 	}
-	if model == "" {
+	if model == "" || model == "gpt-4o-mini" || model == "gpt-4o" {
 		model = defaultFreeLLMModel
 	}
-	return lyricsLLMConfig{BaseURL: base, APIKey: "", Model: model, Provider: "pollinations", SendAuth: false}
+	return lyricsLLMConfig{
+		BaseURL:  strings.TrimRight(base, "/"),
+		APIKey:   "",
+		Model:    model,
+		Provider: "pollinations",
+		SendAuth: false,
+	}
+}
+
+func finalizeLLMAuth(cfg lyricsLLMConfig) lyricsLLMConfig {
+	// Pollinations treats any Bearer as a paid key → 402 if budget is 0.
+	if isPollinationsBase(cfg.BaseURL) {
+		cfg.APIKey = ""
+		cfg.SendAuth = false
+		cfg.Provider = "pollinations"
+		if cfg.Model == "" || cfg.Model == "gpt-4o-mini" || cfg.Model == "gpt-4o" {
+			cfg.Model = defaultFreeLLMModel
+		}
+	}
+	return cfg
+}
+
+func isPollinationsBase(base string) bool {
+	base = strings.ToLower(strings.TrimSpace(base))
+	if base == "" {
+		return false
+	}
+	if strings.Contains(base, "pollinations.ai") {
+		return true
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return strings.HasSuffix(host, "pollinations.ai")
 }
 
 func isPlaceholderAPIKey(key string) bool {
@@ -177,11 +214,36 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 		"max_tokens":  900,
 	}
 	raw, _ := json.Marshal(body)
+
+	text, err := callChatCompletions(cfg, raw)
+	if err != nil && cfg.SendAuth && isPollinationsBase(cfg.BaseURL) {
+		// Should not happen after finalizeLLMAuth; belt-and-suspenders retry.
+		cfg.SendAuth = false
+		cfg.APIKey = ""
+		text, err = callChatCompletions(cfg, raw)
+	}
+	if err != nil && strings.Contains(err.Error(), "402") && cfg.SendAuth {
+		cfg.SendAuth = false
+		cfg.APIKey = ""
+		if !isPollinationsBase(cfg.BaseURL) {
+			cfg.BaseURL = defaultFreeLLMBase
+			cfg.Model = defaultFreeLLMModel
+			cfg.Provider = "pollinations"
+			body["model"] = cfg.Model
+			raw, _ = json.Marshal(body)
+		}
+		text, err = callChatCompletions(cfg, raw)
+	}
+	return text, err
+}
+
+func callChatCompletions(cfg lyricsLLMConfig, raw []byte) (string, error) {
 	req, err := http.NewRequest(http.MethodPost, cfg.BaseURL+"/chat/completions", bytes.NewReader(raw))
 	if err != nil {
 		return "", err
 	}
-	if cfg.SendAuth && cfg.APIKey != "" {
+	// Never send Authorization to Pollinations anonymous endpoint.
+	if cfg.SendAuth && cfg.APIKey != "" && !isPollinationsBase(cfg.BaseURL) {
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	}
 	req.Header.Set("Content-Type", "application/json")

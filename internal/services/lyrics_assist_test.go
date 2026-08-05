@@ -65,3 +65,28 @@ func TestIsPlaceholderAPIKey(t *testing.T) {
 		t.Fatal("placeholder detection failed")
 	}
 }
+
+func TestResolveLyricsLLMConfigPollinationsIgnoresKey(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "pollen-paid-key-with-zero-budget")
+	t.Setenv("OPENAI_BASE_URL", "https://text.pollinations.ai/openai")
+	t.Setenv("OPENAI_MODEL", "gpt-4o-mini")
+	t.Setenv("LYRICS_LLM_PROVIDER", "")
+	t.Setenv("LYRICS_ASSIST", "")
+
+	cfg := resolveLyricsLLMConfig()
+	if cfg.SendAuth || cfg.APIKey != "" {
+		t.Fatalf("pollinations must be anonymous, got %+v", cfg)
+	}
+	if cfg.Model != defaultFreeLLMModel {
+		t.Fatalf("model=%s", cfg.Model)
+	}
+}
+
+func TestFinalizeLLMAuthStripsPollinationsBearer(t *testing.T) {
+	cfg := finalizeLLMAuth(lyricsLLMConfig{
+		BaseURL: defaultFreeLLMBase, APIKey: "x", Model: "gpt-4o-mini", Provider: "custom", SendAuth: true,
+	})
+	if cfg.SendAuth || cfg.APIKey != "" || cfg.Provider != "pollinations" {
+		t.Fatalf("got %+v", cfg)
+	}
+}
