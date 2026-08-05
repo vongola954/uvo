@@ -91,6 +91,21 @@ func TestLocalLyricsDraft(t *testing.T) {
 	if !strings.Contains(text, "[Припев]") || !strings.Contains(text, "дождь") {
 		t.Fatalf("bad draft: %s", text)
 	}
+	if strings.Contains(text, "город молчит") {
+		t.Fatal("old fixed template leaked")
+	}
+}
+
+func TestLocalLyricsDraftVaries(t *testing.T) {
+	a := localLyricsDraft("метро и весна", "инди")
+	b := localLyricsDraft("метро и весна", "инди")
+	if a == b {
+		t.Fatal("expected different drafts for repeated calls")
+	}
+	c := localLyricsDraft("космическая любовь на танцполе", "электронная")
+	if strings.Count(a, "[Куплет 1]") != 1 || !strings.Contains(c, "космическая") && !strings.Contains(c, "танцполе") && !strings.Contains(c, "любовь") {
+		t.Fatalf("expected idea keywords in draft:\n%s", c)
+	}
 }
 
 func TestLyricsAssistDraftFallsBackLocal(t *testing.T) {

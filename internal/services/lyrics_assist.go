@@ -2,6 +2,8 @@ package services
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -224,11 +227,12 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 		return localLyricsDraft(idea, style), nil
 	}
 
-	system := "Ты автор песен. Напиши текст песни на русском (куплет/припев), без пояснений, 12–24 строк."
+	system := "Ты автор песен. Напиши УНИКАЛЬНЫЙ текст песни на русском под конкретную идею пользователя (куплет/припев), без пояснений и без клише «город молчит», 14–24 строк. Не повторяй одни и те же шаблоны."
 	user := "Идея: " + idea
 	if style != "" {
 		user += "\nСтиль: " + style
 	}
+	seed := lyricsSeed(idea, style)
 
 	var text string
 	var err error
@@ -242,14 +246,19 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 				{"role": "system", "content": system},
 				{"role": "user", "content": user},
 			},
-			"temperature": 0.9,
+			"temperature": 1.1,
 			"max_tokens":  900,
+			"seed":        seed,
 		}
 		raw, _ := json.Marshal(body)
 		text, err = callChatCompletions(cfg, raw)
-		// Pollinations often 402 from cloud IPs — retry once with browser-like headers already in call;
-		// then fall back to Gemini if key exists; else local draft.
-		if err != nil && (strings.Contains(err.Error(), "402") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "429")) {
+		// Pollinations often 402 from cloud IPs — try plain GET text API, then Gemini, then local.
+		if err != nil {
+			if t, e2 := callPollinationsTextGET(system+"\n\n"+user, seed); e2 == nil && strings.TrimSpace(t) != "" {
+				text, err = t, nil
+			}
+		}
+		if err != nil && (strings.Contains(err.Error(), "402") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "HTTP")) {
 			if gkey := firstNonEmptyEnv("GEMINI_API_KEY", "VEO_API_KEY", "GOOGLE_API_KEY"); gkey != "" {
 				text, err = callGemini(lyricsLLMConfig{APIKey: gkey, Model: "gemini-2.0-flash", Provider: "gemini"}, system, user)
 			}
@@ -261,6 +270,65 @@ func LyricsAssistDraft(userID, idea, style string, limiter *RateLimiter) (string
 	}
 	if utf8.RuneCountInString(text) > 5000 {
 		text = string([]rune(text)[:5000])
+	}
+	return text, nil
+}
+
+// callPollinationsTextGET hits the legacy free GET endpoint (sometimes works when chat/completions returns 402).
+func callPollinationsTextGET(prompt string, seed uint64) (string, error) {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt")
+	}
+	if utf8.RuneCountInString(prompt) > 1200 {
+		prompt = string([]rune(prompt)[:1200])
+	}
+	u := "https://text.pollinations.ai/" + url.PathEscape(prompt) +
+		"?model=" + url.QueryEscape(defaultFreeLLMModel) +
+		"&seed=" + fmt.Sprintf("%d", seed) +
+		"&temperature=1"
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "text/plain, application/json;q=0.9,*/*;q=0.8")
+	req.Header.Set("Referer", "https://pollinations.ai/")
+	req.Header.Set("Origin", "https://pollinations.ai")
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("pollinations GET HTTP %d", resp.StatusCode)
+	}
+	text := strings.TrimSpace(string(data))
+	// Sometimes returns JSON wrapper
+	if strings.HasPrefix(text, "{") {
+		var wrap struct {
+			Text    string `json:"text"`
+			Content string `json:"content"`
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if json.Unmarshal(data, &wrap) == nil {
+			if wrap.Text != "" {
+				text = wrap.Text
+			} else if wrap.Content != "" {
+				text = wrap.Content
+			} else if len(wrap.Choices) > 0 {
+				text = wrap.Choices[0].Message.Content
+			}
+		}
+	}
+	text = strings.TrimSpace(text)
+	if text == "" || strings.Contains(strings.ToLower(text), "payment required") {
+		return "", fmt.Errorf("пустой ответ pollinations GET")
 	}
 	return text, nil
 }
@@ -383,38 +451,229 @@ func truncateRunes(s string, n int) string {
 	return string([]rune(s)[:n]) + "…"
 }
 
+var lyricsDraftNonce atomic.Uint64
+
+func lyricsSeed(idea, style string) uint64 {
+	// nonce: Windows clock often coarse; counter guarantees unique drafts per call.
+	n := lyricsDraftNonce.Add(1)
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d\x00%d", idea, style, time.Now().UnixNano(), n)))
+	return binary.BigEndian.Uint64(sum[:8])
+}
+
+func pickLine(seed uint64, n int, lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	return lines[int((seed+uint64(n)*9973)%uint64(len(lines)))]
+}
+
 // localLyricsDraft builds a usable Russian song draft without any external LLM.
+// Each call uses a fresh seed so the same idea does not yield an identical sheet.
 func localLyricsDraft(idea, style string) string {
 	idea = strings.TrimSpace(idea)
 	style = strings.TrimSpace(style)
+	seed := lyricsSeed(idea, style)
 	hook := shortHook(idea)
-	mood := "тихо и честно"
-	if style != "" {
-		mood = style
-	}
-	var b strings.Builder
-	b.WriteString("[Куплет 1]\n")
-	b.WriteString(fmt.Sprintf("Я всё ещё думаю про %s,\n", hook))
-	b.WriteString("город молчит, а сердце не спит.\n")
-	b.WriteString("Слова путаются в шуме витрин,\n")
-	b.WriteString(fmt.Sprintf("но я храню эту мысль — %s.\n\n", hook))
 	title := titleFirst(hook)
+	keys := ideaKeywords(idea, 4)
+	k1, k2, k3 := "эта ночь", "тишина", "дорога"
+	if len(keys) > 0 {
+		k1 = keys[0]
+	}
+	if len(keys) > 1 {
+		k2 = keys[1]
+	}
+	if len(keys) > 2 {
+		k3 = keys[2]
+	}
+	mood := detectMood(idea, style)
+	moodPhrase := pickLine(seed, 1, moodPhrases[mood])
+	if style != "" && utf8.RuneCountInString(style) <= 40 {
+		moodPhrase = style
+	}
+
+	v1 := []string{
+		fmt.Sprintf("Начинается с %s — и воздух другой,", k1),
+		fmt.Sprintf("Я ловлю в голове отголосок: %s,", hook),
+		fmt.Sprintf("Под шаги ложится тема про %s,", k1),
+		fmt.Sprintf("Слова сами просятся: %s,", shortHook(k1+" "+k2)),
+	}
+	v1b := []string{
+		fmt.Sprintf("между нами %s и лишний огонь.", k2),
+		fmt.Sprintf("а за окном уже не спрятать %s.", k2),
+		fmt.Sprintf("и пульс отвечает эхом на %s.", k2),
+		fmt.Sprintf("пока %s держит меня на краю.", k2),
+	}
+	v1c := []string{
+		fmt.Sprintf("Я собираю детали — %s, взгляд,", k3),
+		fmt.Sprintf("Не спорю с судьбой, спорю с %s,", k3),
+		fmt.Sprintf("Пусть мир шумит — у меня есть %s,", k3),
+		fmt.Sprintf("Я пишу на ладони коротко: %s,", k3),
+	}
+	v1d := []string{
+		fmt.Sprintf("и не отпускаю мысль про %s.", hook),
+		fmt.Sprintf("пока не выскажу всё про %s.", hook),
+		fmt.Sprintf("чтобы не растворить %s в пустых словах.", hook),
+		fmt.Sprintf("и выбираю дорогу к %s.", hook),
+	}
+
+	chA := []string{
+		fmt.Sprintf("%s — слышишь меня?", title),
+		fmt.Sprintf("%s, не прячь огни,", title),
+		fmt.Sprintf("Эй, %s — давай ещё раз,", strings.ToLower(title)),
+		fmt.Sprintf("%s бьётся в такт,", title),
+	}
+	chB := []string{
+		"мы выходим из тени на голос.",
+		"сердце режет тишину пополам.",
+		"я держу этот ритм до рассвета.",
+		"пусть ветер допишет припев.",
+	}
+	chC := []string{
+		fmt.Sprintf("Звучим %s —", moodPhrase),
+		fmt.Sprintf("Поём %s —", moodPhrase),
+		fmt.Sprintf("Дышим %s —", moodPhrase),
+		fmt.Sprintf("Горим %s —", moodPhrase),
+	}
+	chD := []string{
+		fmt.Sprintf("и %s становится хором.", k1),
+		fmt.Sprintf("пока %s не станет мостом.", k2),
+		fmt.Sprintf("и %s отвечает нам эхом.", hook),
+		fmt.Sprintf("где %s — наш общий код.", k3),
+	}
+
+	v2 := []string{
+		fmt.Sprintf("Вторая глава: %s на ладони,", k2),
+		fmt.Sprintf("Я меняю маршрут — ближе к %s,", k1),
+		fmt.Sprintf("Если спросишь зачем — отвечу: %s,", hook),
+		fmt.Sprintf("Мы оставляем следы через %s,", k3),
+	}
+	v2b := []string{
+		fmt.Sprintf("чужие советы тише, чем %s.", k3),
+		fmt.Sprintf("и страх уже мельче, чем %s.", k2),
+		fmt.Sprintf("а правда громче любого «потом» про %s.", hook),
+		"я выбираю тепло вместо «никогда».",
+	}
+	v2c := []string{
+		"Не нужен идеальный финал с титрами —",
+		"Пусть будет криво, зато по-настоящему —",
+		"Я не коллекционирую идеальные кадры —",
+		"Хватит репетировать чужую жизнь —",
+	}
+	v2d := []string{
+		fmt.Sprintf("мне хватит живого сигнала от %s.", hook),
+		fmt.Sprintf("я беру %s как есть и иду дальше.", k1),
+		fmt.Sprintf("оставляю в припеве только %s.", k2),
+		fmt.Sprintf("и пою, пока звучит %s.", k3),
+	}
+
+	bridge := []string{
+		fmt.Sprintf("Шёпотом: %s…\nгромче: мы здесь.", hook),
+		fmt.Sprintf("Один вдох — и снова %s.", k1),
+		fmt.Sprintf("Если выключишь свет — останется %s.", k2),
+		fmt.Sprintf("Счёт: раз, два — и врывается %s.", title),
+	}
+
+	var b strings.Builder
+	pack := int(seed % 3)
+	b.WriteString("[Куплет 1]\n")
+	b.WriteString(pickLine(seed, 10, v1) + "\n")
+	b.WriteString(pickLine(seed, 11, v1b) + "\n")
+	b.WriteString(pickLine(seed, 12, v1c) + "\n")
+	b.WriteString(pickLine(seed, 13, v1d) + "\n\n")
 	b.WriteString("[Припев]\n")
-	b.WriteString(fmt.Sprintf("%s — не отпускай,\n", title))
-	b.WriteString("пусть ночь рисует нас снова.\n")
-	b.WriteString(fmt.Sprintf("Мы звучим %s,\n", mood))
-	b.WriteString("и эхо отвечает словом.\n\n")
+	b.WriteString(pickLine(seed, 20, chA) + "\n")
+	b.WriteString(pickLine(seed, 21, chB) + "\n")
+	b.WriteString(pickLine(seed, 22, chC) + "\n")
+	b.WriteString(pickLine(seed, 23, chD) + "\n\n")
+	if pack == 1 {
+		b.WriteString("[Бридж]\n")
+		b.WriteString(pickLine(seed, 30, bridge) + "\n\n")
+	}
 	b.WriteString("[Куплет 2]\n")
-	b.WriteString("Следы на стекле, чужие огни,\n")
-	b.WriteString(fmt.Sprintf("в кармане билет и мечта про %s.\n", hook))
-	b.WriteString("Я не прошу идеальный финал —\n")
-	b.WriteString("мне хватит живого сигнала.\n\n")
+	b.WriteString(pickLine(seed, 40, v2) + "\n")
+	b.WriteString(pickLine(seed, 41, v2b) + "\n")
+	b.WriteString(pickLine(seed, 42, v2c) + "\n")
+	b.WriteString(pickLine(seed, 43, v2d) + "\n\n")
 	b.WriteString("[Припев]\n")
-	b.WriteString(fmt.Sprintf("%s — не отпускай,\n", title))
-	b.WriteString("пусть ночь рисует нас снова.\n")
-	b.WriteString(fmt.Sprintf("Мы звучим %s,\n", mood))
-	b.WriteString("и эхо отвечает словом.\n")
+	b.WriteString(pickLine(seed, 50, chA) + "\n")
+	b.WriteString(pickLine(seed, 51, chB) + "\n")
+	b.WriteString(pickLine(seed, 52, chC) + "\n")
+	b.WriteString(pickLine(seed, 53, chD) + "\n")
+	if pack == 2 {
+		b.WriteString("\n[Аутро]\n")
+		b.WriteString(fmt.Sprintf("%s… ещё раз.\n", title))
+		b.WriteString(pickLine(seed, 60, chB) + "\n")
+	}
 	return b.String()
+}
+
+var moodPhrases = map[string][]string{
+	"love":    {"тепло и близко", "мягко, но честно", "как признание", "на грани шёпота"},
+	"sad":     {"тише обычного", "сквозь дождь", "с надломом", "вполголоса"},
+	"energy":  {"громко и прямо", "на полном ходу", "как удар бочки", "без тормозов"},
+	"night":   {"ночным светом", "в неоне", "до рассвета", "в полутьме"},
+	"road":    {"в движении", "километрами", "на скорости", "между станций"},
+	"default": {"по-своему", "чисто и резко", "в своём темпе", "без масок"},
+}
+
+func detectMood(idea, style string) string {
+	s := strings.ToLower(idea + " " + style)
+	switch {
+	case containsAny(s, "люб", "сердц", "поцел", "роман", "нежн", "ты и я"):
+		return "love"
+	case containsAny(s, "груст", "слёз", "боль", "один", "проща", "тоск", "дожд"):
+		return "sad"
+	case containsAny(s, "танц", "вечерин", "энерг", "драйв", "клуб", "громк", "хип"):
+		return "energy"
+	case containsAny(s, "ноч", "лун", "рассвет", "неон", "2:00", "темно"):
+		return "night"
+	case containsAny(s, "дорог", "поезд", "машин", "трасс", "путеше", "метро", "город"):
+		return "road"
+	default:
+		return "default"
+	}
+}
+
+func containsAny(s string, parts ...string) bool {
+	for _, p := range parts {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func ideaKeywords(idea string, n int) []string {
+	stop := map[string]bool{
+		"и": true, "в": true, "на": true, "с": true, "по": true, "к": true, "у": true,
+		"о": true, "а": true, "но": true, "что": true, "как": true, "это": true, "я": true,
+		"мы": true, "ты": true, "он": true, "она": true, "они": true, "для": true, "из": true,
+		"про": true, "или": true, "же": true, "бы": true, "не": true, "да": true, "нет": true,
+		"the": true, "a": true, "an": true, "to": true, "of": true, "and": true,
+		"песня": true, "песню": true, "трек": true, "музыка": true,
+	}
+	fields := strings.FieldsFunc(strings.ToLower(idea), func(r rune) bool {
+		return r == ',' || r == '.' || r == ';' || r == '!' || r == '?' || r == '\n' ||
+			r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '(' || r == ')' || r == '—' || r == '-'
+	})
+	out := make([]string, 0, n)
+	seen := map[string]bool{}
+	for _, w := range fields {
+		w = strings.TrimSpace(w)
+		if w == "" || stop[w] || utf8.RuneCountInString(w) < 3 {
+			continue
+		}
+		if seen[w] {
+			continue
+		}
+		seen[w] = true
+		out = append(out, w)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
 }
 
 func titleFirst(s string) string {
@@ -430,7 +689,6 @@ func shortHook(idea string) string {
 	if idea == "" {
 		return "нас"
 	}
-	// take first meaningful chunk
 	fields := strings.FieldsFunc(idea, func(r rune) bool {
 		return r == ',' || r == '.' || r == ';' || r == '!' || r == '?' || r == '\n'
 	})
